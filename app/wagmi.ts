@@ -11,7 +11,7 @@ export const config = createConfig({
       metadata: {
         name: 'OpenSpace Marketplace',
         description: 'Decentralized escrow marketplace on BNB Testnet',
-        url: 'http://localhost:3000',
+        url: 'https://openspace-ten.vercel.app',
         icons: ['https://avatars.githubusercontent.com/u/37784886'],
       },
     }),
