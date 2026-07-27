@@ -509,7 +509,7 @@ export default function Ecommerce() {
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-24 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 sm:py-4">
-          {/* Row 1: logo + nav tabs (left) ... wallet controls (always top-right) */}
+          {/* Row 1: logo + nav tabs (left) ... dark mode + wallet controls (always top-right) */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 overflow-x-auto no-scrollbar">
               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-[0_0_15px_rgba(163,230,53,0.4)] shrink-0">
@@ -532,7 +532,7 @@ export default function Ecommerce() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => setDarkMode(!darkMode)} className={`hidden sm:flex w-10 h-10 rounded-full border ${cardBorder} items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
+              <button onClick={() => setDarkMode(!darkMode)} className={`flex w-9 h-9 sm:w-10 sm:h-10 rounded-full border ${cardBorder} items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
                 {darkMode ? '☀️' : '🌙'}
               </button>
               {isConnected ? (
@@ -575,9 +575,6 @@ export default function Ecommerce() {
             <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
               <button onClick={() => setHelpModalOpen(true)} title="How to test" className={`w-9 h-9 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity font-semibold shrink-0`}>
                 ❓
-              </button>
-              <button onClick={() => setDarkMode(!darkMode)} className={`sm:hidden w-9 h-9 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
-                {darkMode ? '☀️' : '🌙'}
               </button>
 
               {activeTab === 'shop' && (
