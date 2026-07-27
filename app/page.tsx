@@ -122,8 +122,6 @@ export default function Ecommerce() {
     }
     if (!isInjected) {
       setConnectingConnectorId(connector.uid);
-      // If it never resolves, just quietly clear the "connecting" state after a while —
-      // no error shown, the person can simply try again from the button.
       connectTimeoutRef.current = setTimeout(() => {
         setConnectingConnectorId(null);
       }, CONNECT_TIMEOUT_MS);
@@ -425,7 +423,7 @@ export default function Ecommerce() {
 
     return (
       <div key={id} className={`group relative ${cardBg} rounded-3xl overflow-hidden border ${inCart ? 'border-sky-400' : cardBorder} hover:border-lime-400/60 transition-all duration-300 hover:shadow-[0_0_25px_rgba(163,230,53,0.15)]`}>
-        <div className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} overflow-hidden relative`}>
+        <div className={`w-full aspect-[4/3] sm:aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} overflow-hidden relative`}>
           <img src={displayImage} alt={name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
           {category && (
             <span className={`absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold ${darkMode ? 'bg-zinc-950/80 text-white' : 'bg-white/90 text-zinc-900'} backdrop-blur-sm`}>
@@ -433,25 +431,25 @@ export default function Ecommerce() {
             </span>
           )}
         </div>
-        <div className="p-6">
-          <div className="flex items-center gap-1.5 mb-3">
+        <div className="p-4 sm:p-6">
+          <div className="flex items-center gap-1.5 mb-2 sm:mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
             <span className="text-[11px] uppercase tracking-wider text-lime-600 font-semibold">Verified on-chain</span>
           </div>
-          <h3 className="font-semibold text-xl mb-2">{name}</h3>
+          <h3 className="font-semibold text-lg sm:text-xl mb-2">{name}</h3>
 
           {context === 'shop' ? (
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-3 sm:mb-4">
               <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>
                 {seller.slice(2, 4).toUpperCase()}
               </div>
               <p className={`text-xs ${subtleText} font-mono`}>{seller.slice(0, 6)}...{seller.slice(-4)}</p>
             </div>
           ) : (
-            <p className={`text-xs ${subtleText} font-mono mb-4`}>{sold ? `Buyer: ${buyer.slice(0, 6)}...${buyer.slice(-4)}` : 'Not sold yet'}</p>
+            <p className={`text-xs ${subtleText} font-mono mb-3 sm:mb-4`}>{sold ? `Buyer: ${buyer.slice(0, 6)}...${buyer.slice(-4)}` : 'Not sold yet'}</p>
           )}
 
-          <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+          <span className="text-xl sm:text-2xl font-mono block mb-3 sm:mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
             {(Number(price) / 1e18).toString()} {symbol}
           </span>
 
@@ -508,107 +506,116 @@ export default function Ecommerce() {
   };
 
   return (
-    <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-24 flex flex-col`}>
+    <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-24 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
-        <div className="max-w-6xl mx-auto px-8 py-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-[0_0_15px_rgba(163,230,53,0.4)]">
-                <span className="text-zinc-900 font-bold text-xl">O</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 sm:py-4">
+          {/* Row 1: logo + nav tabs (left) ... wallet controls (always top-right) */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 overflow-x-auto no-scrollbar">
+              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-[0_0_15px_rgba(163,230,53,0.4)] shrink-0">
+                <span className="text-zinc-900 font-bold text-lg sm:text-xl">O</span>
               </div>
 
-              <div className={`flex items-center gap-1 p-1 rounded-2xl ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}>
-                <button onClick={() => setActiveTab('shop')} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
+              <div className={`flex items-center gap-1 p-1 rounded-2xl ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} shrink-0`}>
+                <button onClick={() => setActiveTab('shop')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
                   🛍 Buy
                 </button>
-                <button onClick={() => setActiveTab('sell')} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
+                <button onClick={() => setActiveTab('sell')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
                   🏪 Sell
                 </button>
                 {isAdmin && (
-                  <button onClick={() => setActiveTab('analytics')} className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
+                  <button onClick={() => setActiveTab('analytics')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
                     📊 Analytics
                   </button>
                 )}
               </div>
             </div>
 
-            {activeTab === 'shop' && (
-              <div className={`flex-1 max-w-xl flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden`}>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search items..."
-                  className="flex-1 bg-transparent px-5 py-2.5 outline-none text-sm"
-                />
-                <button title="Visual search — coming soon" className={`px-3 ${subtleText} hover:${text} transition-colors`} onClick={() => alert('Visual/camera search is a planned future feature.')}>
-                  📷
-                </button>
-                <div className="w-9 h-9 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900">
-                  🔍
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => setDarkMode(!darkMode)} className={`hidden sm:flex w-10 h-10 rounded-full border ${cardBorder} items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
+                {darkMode ? '☀️' : '🌙'}
+              </button>
+              {isConnected ? (
+                <div className="flex items-center gap-2">
+                  {isAdmin && <span className="hidden sm:inline px-3 py-1.5 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-xl text-xs font-semibold">ADMIN</span>}
+                  <span className={`px-3 py-2 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-2xl text-xs sm:text-sm font-mono`}>
+                    {address?.slice(0, 4)}...{address?.slice(-4)}
+                  </span>
+                  <button onClick={() => disconnect()} className="px-3 sm:px-5 py-2 sm:py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-xs sm:text-sm font-medium transition-colors whitespace-nowrap">Disconnect</button>
                 </div>
-              </div>
-            )}
+              ) : (
+                <button onClick={openWalletChoice} className="px-3 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(163,230,53,0.3)] whitespace-nowrap">
+                  Connect Wallet
+                </button>
+              )}
+            </div>
+          </div>
 
-            <div className="flex items-center gap-3 flex-wrap">
-              <button onClick={() => setHelpModalOpen(true)} title="How to test" className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity font-semibold`}>
+          {/* Row 2: search bar (shop tab only) — full width on its own row */}
+          {activeTab === 'shop' && (
+            <div className={`mt-3 flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden w-full`}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search items..."
+                className="flex-1 min-w-0 bg-transparent px-4 sm:px-5 py-2.5 outline-none text-sm"
+              />
+              <button title="Visual search — coming soon" className={`px-3 ${subtleText} hover:${text} transition-colors shrink-0`} onClick={() => alert('Visual/camera search is a planned future feature.')}>
+                📷
+              </button>
+              <div className="w-9 h-9 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">
+                🔍
+              </div>
+            </div>
+          )}
+
+          {/* Row 3: filters + secondary actions — horizontally scrollable, never wraps/pushes layout */}
+          {(activeTab === 'shop' || (isConnected && (disputeEligible.length > 0 || (isAdmin && disputedItems.length > 0)))) && (
+            <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <button onClick={() => setHelpModalOpen(true)} title="How to test" className={`w-9 h-9 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity font-semibold shrink-0`}>
                 ❓
+              </button>
+              <button onClick={() => setDarkMode(!darkMode)} className={`sm:hidden w-9 h-9 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
+                {darkMode ? '☀️' : '🌙'}
               </button>
 
               {activeTab === 'shop' && (
                 <>
-                  <select value={viewCategory} onChange={(e) => setViewCategory(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400`}>
+                  <select value={viewCategory} onChange={(e) => setViewCategory(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400 shrink-0`}>
                     <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
                     {CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
                   </select>
-                  <select value={viewCurrency} onChange={(e) => setViewCurrency(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400`}>
+                  <select value={viewCurrency} onChange={(e) => setViewCurrency(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400 shrink-0`}>
                     {Object.keys(VIEW_CURRENCIES).map((key) => (<option key={key} value={key}>{VIEW_CURRENCIES[key].label}</option>))}
                   </select>
                 </>
               )}
 
               {isConnected && disputeEligible.length > 0 && (
-                <button onClick={() => setDisputeCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-red-400/40 text-red-500 hover:bg-red-500/10 transition-colors">
+                <button onClick={() => setDisputeCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-red-400/40 text-red-500 hover:bg-red-500/10 transition-colors shrink-0 whitespace-nowrap">
                   ⚠ Open Dispute
                 </button>
               )}
               {isAdmin && disputedItems.length > 0 && (
-                <button onClick={() => setResolveCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-600 hover:bg-amber-400/10 transition-colors">
+                <button onClick={() => setResolveCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-600 hover:bg-amber-400/10 transition-colors shrink-0 whitespace-nowrap">
                   Resolve Disputes ({disputedItems.length})
                 </button>
               )}
-
-              <button onClick={() => setDarkMode(!darkMode)} className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity`}>
-                {darkMode ? '☀️' : '🌙'}
-              </button>
-
-              {isConnected ? (
-                <div className="flex items-center gap-3">
-                  {isAdmin && <span className="px-3 py-1.5 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-xl text-xs font-semibold">ADMIN</span>}
-                  <span className={`px-4 py-2 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-2xl text-sm font-mono`}>
-                    {address?.slice(0, 6)}...{address?.slice(-4)}
-                  </span>
-                  <button onClick={() => disconnect()} className="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-sm font-medium transition-colors">Disconnect</button>
-                </div>
-              ) : (
-                <button onClick={openWalletChoice} className="px-5 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl text-sm font-semibold hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(163,230,53,0.3)]">
-                  Connect Wallet
-                </button>
-              )}
             </div>
-          </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-8 py-12 flex-1 w-full">
+      <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 flex-1 w-full">
         {activeTab === 'shop' ? (
           <>
-            <div className="mb-8">
-              <h2 className="text-5xl font-black tracking-tighter mb-3">
+            <div className="mb-6 sm:mb-8">
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">
                 The Marketplace,<br />
                 <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Decentralized.</span>
               </h2>
-              <p className={`${subtleText} text-lg`}>
+              <p className={`${subtleText} text-base sm:text-lg`}>
                 {viewCategory !== ALL_CATEGORIES ? `${viewCategory} — ` : ''}{viewCurrency === ALL_KEY ? 'showing items in all currencies' : `showing items priced in ${VIEW_CURRENCIES[viewCurrency].label}`} — funds held in escrow until you confirm.
               </p>
             </div>
@@ -618,23 +625,23 @@ export default function Ecommerce() {
             ) : shopItems.length === 0 ? (
               <p className={subtleText}>No items found{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {shopItems.map((item) => renderItemCard(item, 'shop'))}
               </div>
             )}
           </>
         ) : activeTab === 'sell' ? (
           <>
-            <div className="mb-10 flex items-start justify-between gap-6 flex-wrap">
+            <div className="mb-8 sm:mb-10 flex items-start justify-between gap-4 sm:gap-6 flex-wrap">
               <div>
-                <h2 className="text-5xl font-black tracking-tighter mb-3">
+                <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">
                   Seller<br />
                   <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Dashboard.</span>
                 </h2>
-                <p className={`${subtleText} text-lg`}>Manage your listings, shipments, and sales.</p>
+                <p className={`${subtleText} text-base sm:text-lg`}>Manage your listings, shipments, and sales.</p>
               </div>
               {isConnected && (
-                <button onClick={() => setShowListForm(!showListForm)} className="px-6 py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                <button onClick={() => setShowListForm(!showListForm)} className="px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
                   {showListForm ? 'Cancel' : '+ List an Item'}
                 </button>
               )}
@@ -688,7 +695,7 @@ export default function Ecommerce() {
                 {myListings.length === 0 ? (
                   <p className={subtleText}>You haven't listed anything yet.</p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     {myListings.map((item) => renderItemCard(item, 'sell'))}
                   </div>
                 )}
@@ -698,11 +705,11 @@ export default function Ecommerce() {
         ) : (
           <>
             <div className="mb-10">
-              <h2 className="text-5xl font-black tracking-tighter mb-3">
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">
                 Platform<br />
                 <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Analytics.</span>
               </h2>
-              <p className={`${subtleText} text-lg`}>Live stats pulled directly from the smart contract.</p>
+              <p className={`${subtleText} text-base sm:text-lg`}>Live stats pulled directly from the smart contract.</p>
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
@@ -740,7 +747,7 @@ export default function Ecommerce() {
       </div>
 
       <footer className={`border-t ${cardBorder} mt-12`}>
-        <div className="max-w-6xl mx-auto px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center">
               <span className="text-zinc-900 font-bold text-xs">O</span>
@@ -753,7 +760,7 @@ export default function Ecommerce() {
 
       {cart.length > 0 && cartCurrency && activeTab === 'shop' && (
         <div className={`fixed bottom-0 left-0 right-0 ${cardBg} border-t ${cardBorder} backdrop-blur-xl z-50`}>
-          <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="max-w-6xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between flex-wrap gap-3">
             <div>
               <span className="font-semibold">{cart.length} item{cart.length > 1 ? 's' : ''} in cart</span>
               <span className={`ml-3 ${subtleText}`}>Subtotal: <span className="text-lime-500 font-mono">{(Number(cartSubtotal) / 1e18).toFixed(4)} {currencySymbol(cartCurrency)}</span></span>
