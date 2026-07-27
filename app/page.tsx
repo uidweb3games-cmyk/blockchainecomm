@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccount, useConnect, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
@@ -13,6 +13,7 @@ const ALL_KEY = 'ALL';
 const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
+const CONNECT_TIMEOUT_MS = 20000;
 
 const CATEGORIES = ['Electronics', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
 
@@ -88,6 +89,9 @@ export default function Ecommerce() {
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
+  const [connectTimeoutMsg, setConnectTimeoutMsg] = useState<string | null>(null);
+  const [connectingConnectorId, setConnectingConnectorId] = useState<string | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -104,11 +108,48 @@ export default function Ecommerce() {
   const { writeContract, isPending, data: txHash } = useWriteContract();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
-  const openWalletChoice = () => setWalletChoiceOpen(true);
+  const openWalletChoice = () => {
+    setConnectTimeoutMsg(null);
+    setWalletChoiceOpen(true);
+  };
+
   const chooseConnector = (connector: any) => {
+    setConnectTimeoutMsg(null);
     connect({ connector });
     setWalletChoiceOpen(false);
+
+    const isInjected = connector.type === 'injected';
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    if (!isInjected) {
+      setConnectingConnectorId(connector.uid);
+      connectTimeoutRef.current = setTimeout(() => {
+        setConnectTimeoutMsg("Connection timed out — the wallet app didn't respond. Please try again, or use a different connection method.");
+        setConnectingConnectorId(null);
+      }, CONNECT_TIMEOUT_MS);
+    }
   };
+
+  const dismissConnectTimeout = () => setConnectTimeoutMsg(null);
+
+  useEffect(() => {
+    if (isConnected) {
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
+      setConnectingConnectorId(null);
+      setConnectTimeoutMsg(null);
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    return () => {
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+    };
+  }, []);
 
   const { data: itemCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'itemCount' });
   const { data: adminAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'admin' });
@@ -715,6 +756,25 @@ export default function Ecommerce() {
         </div>
       </footer>
 
+      {connectTimeoutMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] max-w-md w-[90%]">
+          <div className={`${cardBg} border border-red-400/40 rounded-2xl p-4 shadow-lg flex items-start gap-3`}>
+            <span className="text-red-500 text-lg">⚠</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium mb-2">{connectTimeoutMsg}</p>
+              <div className="flex gap-2">
+                <button onClick={() => { dismissConnectTimeout(); openWalletChoice(); }} className="px-3 py-1.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg text-xs font-semibold">
+                  Try Again
+                </button>
+                <button onClick={dismissConnectTimeout} className={`px-3 py-1.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-lg text-xs font-medium`}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cart.length > 0 && cartCurrency && activeTab === 'shop' && (
         <div className={`fixed bottom-0 left-0 right-0 ${cardBg} border-t ${cardBorder} backdrop-blur-xl z-50`}>
           <div className="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between flex-wrap gap-3">
@@ -837,15 +897,36 @@ export default function Ecommerce() {
             <h3 className="font-semibold text-lg mb-1">Connect Your Wallet</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Choose how you'd like to connect. On mobile, WalletConnect usually works best.</p>
             <div className="space-y-2 mb-4">
-              {connectors.map((connector) => (
-                <button
-                  key={connector.uid}
-                  onClick={() => chooseConnector(connector)}
-                  className={`w-full py-3 px-4 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} text-left font-medium transition-colors`}
-                >
-                  {connector.name === 'Injected' ? 'Browser Extension (MetaMask, etc.)' : connector.name}
-                </button>
-              ))}
+              {(() => {
+                const injectedConnectors = connectors.filter((c) => c.type === 'injected');
+                const hasSingleInjected = injectedConnectors.length <= 1;
+                return connectors.map((connector) => {
+                  const isInjected = connector.type === 'injected';
+                  const injectedAvailable = typeof window !== 'undefined' && !!(window as any).ethereum;
+                  const useGenericLabel = isInjected && hasSingleInjected;
+                  const label = useGenericLabel
+                    ? (injectedAvailable ? "Continue with this Wallet" : 'Browser Extension (MetaMask, etc.)')
+                    : connector.name;
+                  const isConnectingThis = connectingConnectorId === connector.uid;
+
+                  return (
+                    <button
+                      key={connector.uid}
+                      onClick={() => chooseConnector(connector)}
+                      disabled={isConnectingThis}
+                      className={`w-full py-3 px-4 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} text-left font-medium transition-colors disabled:opacity-50 ${isInjected && injectedAvailable ? 'ring-2 ring-lime-400' : ''}`}
+                    >
+                      {label}
+                      {isInjected && injectedAvailable && (
+                        <span className={`block text-xs font-normal mt-0.5 ${subtleText}`}>Recommended — you're already in a wallet browser</span>
+                      )}
+                      {isConnectingThis && (
+                        <span className="block text-xs font-normal mt-0.5 text-sky-500">Connecting...</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
             </div>
             {connectError && (
               <p className="text-xs text-red-500 mb-3">{connectError.message}</p>
