@@ -13,7 +13,7 @@ const ALL_KEY = 'ALL';
 const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
-const CONNECT_TIMEOUT_MS = 20000;
+const CONNECT_TIMEOUT_MS = 60000;
 
 const CATEGORIES = ['Electronics', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
 
@@ -89,7 +89,6 @@ export default function Ecommerce() {
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
-  const [connectTimeoutMsg, setConnectTimeoutMsg] = useState<string | null>(null);
   const [connectingConnectorId, setConnectingConnectorId] = useState<string | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -109,12 +108,10 @@ export default function Ecommerce() {
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
   const openWalletChoice = () => {
-    setConnectTimeoutMsg(null);
     setWalletChoiceOpen(true);
   };
 
   const chooseConnector = (connector: any) => {
-    setConnectTimeoutMsg(null);
     connect({ connector });
     setWalletChoiceOpen(false);
 
@@ -125,14 +122,13 @@ export default function Ecommerce() {
     }
     if (!isInjected) {
       setConnectingConnectorId(connector.uid);
+      // If it never resolves, just quietly clear the "connecting" state after a while —
+      // no error shown, the person can simply try again from the button.
       connectTimeoutRef.current = setTimeout(() => {
-        setConnectTimeoutMsg("Connection timed out — the wallet app didn't respond. Please try again, or use a different connection method.");
         setConnectingConnectorId(null);
       }, CONNECT_TIMEOUT_MS);
     }
   };
-
-  const dismissConnectTimeout = () => setConnectTimeoutMsg(null);
 
   useEffect(() => {
     if (isConnected) {
@@ -141,7 +137,6 @@ export default function Ecommerce() {
         connectTimeoutRef.current = null;
       }
       setConnectingConnectorId(null);
-      setConnectTimeoutMsg(null);
     }
   }, [isConnected]);
 
@@ -755,25 +750,6 @@ export default function Ecommerce() {
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
-
-      {connectTimeoutMsg && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] max-w-md w-[90%]">
-          <div className={`${cardBg} border border-red-400/40 rounded-2xl p-4 shadow-lg flex items-start gap-3`}>
-            <span className="text-red-500 text-lg">⚠</span>
-            <div className="flex-1">
-              <p className="text-sm font-medium mb-2">{connectTimeoutMsg}</p>
-              <div className="flex gap-2">
-                <button onClick={() => { dismissConnectTimeout(); openWalletChoice(); }} className="px-3 py-1.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg text-xs font-semibold">
-                  Try Again
-                </button>
-                <button onClick={dismissConnectTimeout} className={`px-3 py-1.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-lg text-xs font-medium`}>
-                  Dismiss
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {cart.length > 0 && cartCurrency && activeTab === 'shop' && (
         <div className={`fixed bottom-0 left-0 right-0 ${cardBg} border-t ${cardBorder} backdrop-blur-xl z-50`}>
