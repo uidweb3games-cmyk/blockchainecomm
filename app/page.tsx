@@ -78,7 +78,7 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 
 function OpenSpaceLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 300 110" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 340 130" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
@@ -86,14 +86,14 @@ function OpenSpaceLogo({ className }: { className?: string }) {
         </linearGradient>
       </defs>
       <path
-        d="M 62.31 26.17 A 36 36 0 1 0 62.31 93.83"
+        d="M 91.37 49 A 42 42 0 1 0 91.37 91"
         fill="none"
         stroke="url(#osGrad)"
-        strokeWidth="12"
+        strokeWidth="13"
         strokeLinecap="round"
       />
-      <text x="66" y="30" fontFamily="system-ui, sans-serif" fontSize="18" fontWeight="500" fill="url(#osGrad)">pen</text>
-      <text x="30" y="80" fontFamily="system-ui, sans-serif" fontSize="46" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
+      <text x="86" y="43" fontFamily="system-ui, sans-serif" fontSize="30" fontWeight="600" fill="url(#osGrad)">pen</text>
+      <text x="40" y="100" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
     </svg>
   );
 }
@@ -545,11 +545,108 @@ export default function Ecommerce() {
   return (
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center gap-3">
-          <OpenSpaceLogo className="h-11 sm:h-14 w-auto shrink-0" />
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
+          <OpenSpaceLogo className="h-12 sm:h-16 w-auto shrink-0" />
 
-          {activeTab === 'shop' ? (
-            <div className={`flex-1 min-w-0 flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden`}>
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="relative">
+              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity text-lg`}>
+                💱
+              </button>
+              {currencyMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setCurrencyMenuOpen(false)} />
+                  <div className={`absolute right-0 mt-2 w-44 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
+                    {Object.keys(VIEW_CURRENCIES).map((key) => (
+                      <button
+                        key={key}
+                        onClick={() => { setViewCurrency(key); setCurrencyMenuOpen(false); }}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium ${viewCurrency === key ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                      >
+                        {VIEW_CURRENCIES[key].label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button onClick={() => setCartOpen(true)} className={`relative w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity`}>
+              🛒
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>
+              )}
+            </button>
+
+            {/* Menu — now a dropdown anchored to this button, not a centered popup */}
+            <div className="relative">
+              <button onClick={() => setMenuOpen((v) => !v)} className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity text-lg`}>
+                ☰
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className={`absolute right-0 mt-2 w-64 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-[75vh] overflow-y-auto`}>
+                    <div className="p-2">
+                      <div className="space-y-1">
+                        <button onClick={() => { setActiveTab('shop'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                          🛍 Buy
+                        </button>
+                        <button onClick={() => { setActiveTab('sell'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                          🏪 Become a Seller / Merchant
+                        </button>
+                        {isAdmin && (
+                          <button onClick={() => { setActiveTab('analytics'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                            📊 Analytics
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={`border-t ${cardBorder} mt-2 pt-2 space-y-1`}>
+                        <button onClick={() => { setDarkMode(!darkMode); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                          {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
+                        </button>
+                        <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                          ❓ How to Test
+                        </button>
+                        {isConnected && disputeEligible.length > 0 && (
+                          <button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            ⚠ Open Dispute
+                          </button>
+                        )}
+                        {isAdmin && disputedItems.length > 0 && (
+                          <button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            Resolve Disputes ({disputedItems.length})
+                          </button>
+                        )}
+                      </div>
+
+                      <div className={`border-t ${cardBorder} mt-2 pt-2`}>
+                        {isConnected ? (
+                          <div className="space-y-1.5">
+                            {isAdmin && <span className="inline-block px-2 py-1 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-lg text-[11px] font-semibold mb-1">ADMIN</span>}
+                            <div className={`px-3 py-2 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-lg text-xs font-mono text-center`}>
+                              {address?.slice(0, 6)}...{address?.slice(-4)}
+                            </div>
+                            <button onClick={() => { disconnect(); setMenuOpen(false); }} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Disconnect</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setMenuOpen(false); openWalletChoice(); }} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
+                            Connect Wallet
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {activeTab === 'shop' && (
+          <div className={`border-t ${cardBorder} px-4 sm:px-8 py-2.5`}>
+            <div className={`max-w-6xl mx-auto flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden`}>
               <input
                 type="text"
                 value={searchQuery}
@@ -561,48 +658,13 @@ export default function Ecommerce() {
                 🔍
               </div>
             </div>
-          ) : (
-            <div className="flex-1 min-w-0" />
-          )}
-
-          <div className="relative shrink-0">
-            <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity text-lg`}>
-              💱
-            </button>
-            {currencyMenuOpen && (
-              <div className={`absolute right-0 mt-2 w-44 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
-                {Object.keys(VIEW_CURRENCIES).map((key) => (
-                  <button
-                    key={key}
-                    onClick={() => { setViewCurrency(key); setCurrencyMenuOpen(false); }}
-                    className={`w-full text-left px-4 py-2.5 text-sm font-medium ${viewCurrency === key ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
-                  >
-                    {VIEW_CURRENCIES[key].label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-
-          <button onClick={() => setCartOpen(true)} className={`relative w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
-            🛒
-            {cart.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>
-            )}
-          </button>
-
-          <button onClick={() => setMenuOpen(true)} className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0 text-lg`}>
-            ☰
-          </button>
-        </div>
+        )}
 
         {activeTab === 'shop' && adStrip.length > 0 && (
           <div className={`border-t ${cardBorder} py-3 overflow-hidden`}>
-            <div className="flex items-center gap-1 px-4 sm:px-8 mb-2">
-              <span className={`text-[11px] uppercase tracking-wide font-semibold ${subtleText}`}>Sponsored</span>
-            </div>
             <div className="overflow-hidden">
-              <div className="flex gap-3 w-max animate-marquee">
+              <div className="flex gap-3 w-max animate-marquee px-4 sm:px-8">
                 {adStrip.map((item, i) => {
                   const displayImage = item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : FALLBACK_IMAGE;
                   return (
@@ -636,7 +698,6 @@ export default function Ecommerce() {
             </div>
 
             <div className="flex gap-4 sm:gap-6">
-              {/* Category column — icon + label, stacked vertically, starts here (below heading, level with grid) */}
               <div className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20">
                 <button onClick={() => setViewCategory(ALL_CATEGORIES)} className="flex flex-col items-center gap-1">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg ${viewCategory === ALL_CATEGORIES ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
@@ -785,7 +846,7 @@ export default function Ecommerce() {
 
       <footer className={`border-t ${cardBorder} mt-12`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <OpenSpaceLogo className="h-8 w-auto" />
+          <OpenSpaceLogo className="h-9 w-auto" />
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
@@ -890,66 +951,6 @@ export default function Ecommerce() {
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
-
-      {menuOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setMenuOpen(false)}>
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-lg">Menu</h3>
-              <button onClick={() => setMenuOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
-            </div>
-
-            <div className="space-y-1 mb-4">
-              <button onClick={() => { setActiveTab('shop'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
-                🛍 Buy
-              </button>
-              <button onClick={() => { setActiveTab('sell'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
-                🏪 Become a Seller / Merchant
-              </button>
-              {isAdmin && (
-                <button onClick={() => { setActiveTab('analytics'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
-                  📊 Analytics
-                </button>
-              )}
-            </div>
-
-            <div className={`border-t ${cardBorder} pt-4 mb-4 space-y-1`}>
-              <button onClick={() => { setDarkMode(!darkMode); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-              </button>
-              <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                ❓ How to Test
-              </button>
-              {isConnected && disputeEligible.length > 0 && (
-                <button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                  ⚠ Open Dispute
-                </button>
-              )}
-              {isAdmin && disputedItems.length > 0 && (
-                <button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                  Resolve Disputes ({disputedItems.length})
-                </button>
-              )}
-            </div>
-
-            <div className={`border-t ${cardBorder} pt-4`}>
-              {isConnected ? (
-                <div className="space-y-2">
-                  {isAdmin && <span className="inline-block px-3 py-1.5 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-xl text-xs font-semibold mb-1">ADMIN</span>}
-                  <div className={`px-4 py-2.5 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-2xl text-sm font-mono text-center`}>
-                    {address?.slice(0, 6)}...{address?.slice(-4)}
-                  </div>
-                  <button onClick={() => { disconnect(); setMenuOpen(false); }} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-sm font-medium transition-colors">Disconnect</button>
-                </div>
-              ) : (
-                <button onClick={() => { setMenuOpen(false); openWalletChoice(); }} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl text-sm font-semibold hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(163,230,53,0.3)]">
-                  Connect Wallet
-                </button>
-              )}
-            </div>
           </div>
         </div>
       )}
