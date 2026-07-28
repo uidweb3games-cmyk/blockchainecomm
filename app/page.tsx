@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useAccount, useConnect, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
+import { useSetActiveWallet } from '@privy-io/wagmi';
 import { parseEther, formatEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
@@ -13,7 +15,6 @@ const ALL_KEY = 'ALL';
 const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
-const CONNECT_TIMEOUT_MS = 60000;
 
 const CATEGORIES = ['Electronics', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
 const CATEGORY_ICONS: Record<string, string> = {
@@ -120,12 +121,117 @@ export default function Ecommerce() {
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
-  const [connectingConnectorId, setConnectingConnectorId] = useState<string | null>(null);
-  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
+  const [emailStep, setEmailStep] = useState<'input' | 'code'>('input');
+  const [emailInput, setEmailInput] = useState('');
+  const [codeInput, setCodeInput] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailErr, setEmailErr] = useState('');
+  const [oauthErr, setOauthErr] = useState('');
+  const [addressCopied, setAddressCopied] = useState(false);
+  const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
+
+  const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
+  const { initOAuth } = useLoginWithOAuth();
+  const { sendCode, loginWithCode } = useLoginWithEmail();
+  const { loginWithPasskey } = useLoginWithPasskey();
+  const { connectWallet } = useConnectWallet();
+  const { wallets: privyWallets } = useWallets();
+  const { setActiveWallet } = useSetActiveWallet();
+  const { createWallet } = useCreateWallet();
+
+  const hasEmbeddedWallet = !!privyUser?.linkedAccounts?.find(
+    (a: any) => a.type === 'wallet' && a.walletClient === 'privy' && a.chainType === 'ethereum'
+  );
+
+  useEffect(() => {
+    if (privyAuthenticated && privyWallets.length === 0) {
+      createWallet().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privyAuthenticated, privyWallets.length]);
+
+  useEffect(() => {
+    if (privyWallets.length > 0) {
+      const embeddedWallet = privyWallets.find((w) => w.walletClientType === 'privy');
+      const walletToActivate = embeddedWallet ?? privyWallets[0];
+      setActiveWallet(walletToActivate).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privyWallets]);
+
+  const handleGoogleLogin = async () => {
+    setOauthErr('');
+    try {
+      await initOAuth({ provider: 'google' });
+    } catch (e: any) {
+      setOauthErr(e?.message || 'Google login failed. Please try again.');
+    }
+  };
+
+  const handleTwitterLogin = async () => {
+    setOauthErr('');
+    try {
+      await initOAuth({ provider: 'twitter' });
+    } catch (e: any) {
+      setOauthErr(e?.message || 'X login failed. Please try again.');
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setOauthErr('');
+    try {
+      await loginWithPasskey();
+    } catch (e: any) {
+      setOauthErr(e?.message || 'Passkey login failed. Please try again.');
+    }
+  };
+
+  const resetEmailFlow = () => {
+    setEmailStep('input');
+    setEmailInput('');
+    setCodeInput('');
+    setEmailErr('');
+    setEmailBusy(false);
+  };
+
+  const handleSendCode = async () => {
+    if (!emailInput.trim()) return;
+    setEmailBusy(true);
+    setEmailErr('');
+    try {
+      await sendCode({ email: emailInput.trim() });
+      setEmailStep('code');
+    } catch (e) {
+      setEmailErr('Could not send code. Check the email and try again.');
+    }
+    setEmailBusy(false);
+  };
+
+  const handleVerifyCode = async () => {
+    if (!codeInput.trim()) return;
+    setEmailBusy(true);
+    setEmailErr('');
+    try {
+      await loginWithCode({ code: codeInput.trim() });
+    } catch (e) {
+      setEmailErr('Incorrect code. Please try again.');
+    }
+    setEmailBusy(false);
+  };
+
+  useEffect(() => {
+    if (privyAuthenticated && walletChoiceOpen) {
+      setWalletChoiceOpen(false);
+      resetEmailFlow();
+      setOauthErr('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privyAuthenticated]);
 
   useEffect(() => {
     setMounted(true);
@@ -137,47 +243,38 @@ export default function Ecommerce() {
   }, []);
 
   const { address, isConnected } = useAccount();
-  const { connect, connectors, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const { writeContract, isPending, data: txHash } = useWriteContract();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
+  const { data: myBnbBalance } = useBalance({ address, query: { enabled: !!address } });
 
   const openWalletChoice = () => {
+    resetEmailFlow();
+    setOauthErr('');
     setWalletChoiceOpen(true);
   };
 
-  const chooseConnector = (connector: any) => {
-    connect({ connector });
-    setWalletChoiceOpen(false);
+  const handleDisconnect = () => {
+    privyLogout();
+    disconnect();
+    setMenuOpen(false);
+  };
 
-    const isInjected = connector.type === 'injected';
-    if (connectTimeoutRef.current) {
-      clearTimeout(connectTimeoutRef.current);
-      connectTimeoutRef.current = null;
-    }
-    if (!isInjected) {
-      setConnectingConnectorId(connector.uid);
-      connectTimeoutRef.current = setTimeout(() => {
-        setConnectingConnectorId(null);
-      }, CONNECT_TIMEOUT_MS);
+  const copyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 2000);
     }
   };
 
-  useEffect(() => {
-    if (isConnected) {
-      if (connectTimeoutRef.current) {
-        clearTimeout(connectTimeoutRef.current);
-        connectTimeoutRef.current = null;
-      }
-      setConnectingConnectorId(null);
+  const copySettingsAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setSettingsAddressCopied(true);
+      setTimeout(() => setSettingsAddressCopied(false), 2000);
     }
-  }, [isConnected]);
-
-  useEffect(() => {
-    return () => {
-      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
-    };
-  }, []);
+  };
 
   const { data: itemCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'itemCount' });
   const { data: adminAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'admin' });
@@ -578,7 +675,6 @@ export default function Ecommerce() {
               )}
             </button>
 
-            {/* Menu — now a dropdown anchored to this button, not a centered popup */}
             <div className="relative">
               <button onClick={() => setMenuOpen((v) => !v)} className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity text-lg`}>
                 ☰
@@ -625,10 +721,19 @@ export default function Ecommerce() {
                         {isConnected ? (
                           <div className="space-y-1.5">
                             {isAdmin && <span className="inline-block px-2 py-1 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-lg text-[11px] font-semibold mb-1">ADMIN</span>}
-                            <div className={`px-3 py-2 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-lg text-xs font-mono text-center`}>
-                              {address?.slice(0, 6)}...{address?.slice(-4)}
+                            <button
+                              onClick={copyAddress}
+                              className={`w-full px-3 py-2 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} border ${cardBorder} rounded-lg text-xs font-mono text-center transition-colors`}
+                            >
+                              {addressCopied ? '✓ Copied full address!' : `${address?.slice(0, 6)}...${address?.slice(-4)} (tap to copy)`}
+                            </button>
+                            <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText}`}>
+                              {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}
                             </div>
-                            <button onClick={() => { disconnect(); setMenuOpen(false); }} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Disconnect</button>
+                            <button onClick={() => { setSettingsOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                              ⚙️ Wallet Settings
+                            </button>
+                            <button onClick={handleDisconnect} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Disconnect</button>
                           </div>
                         ) : (
                           <button onClick={() => { setMenuOpen(false); openWalletChoice(); }} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
@@ -851,6 +956,57 @@ export default function Ecommerce() {
         </div>
       </footer>
 
+      {settingsOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setSettingsOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Wallet Settings</h3>
+              <button onClick={() => setSettingsOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Wallet Address</label>
+                <button
+                  onClick={copySettingsAddress}
+                  className={`w-full px-3 py-3 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-50 hover:bg-zinc-100'} border ${cardBorder} rounded-xl text-xs font-mono text-left break-all transition-colors`}
+                >
+                  {settingsAddressCopied ? '✓ Copied to clipboard!' : address}
+                </button>
+              </div>
+
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Balance</label>
+                <div className={`px-3 py-3 ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} rounded-xl text-sm font-mono`}>
+                  {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading...'}
+                </div>
+                <p className={`text-[11px] ${subtleText} mt-1`}>Need funds? Get free test tBNB at testnet.bnbchain.org/faucet-smart</p>
+              </div>
+
+              <div className={`border-t ${cardBorder} pt-4`}>
+                {hasEmbeddedWallet ? (
+                  <>
+                    <button
+                      onClick={() => exportWallet()}
+                      className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity"
+                    >
+                      🔐 Back Up Wallet
+                    </button>
+                    <p className={`text-[11px] ${subtleText} mt-2`}>
+                      This opens a secure screen where you can view and copy your private key or recovery phrase. Never share this with anyone.
+                    </p>
+                  </>
+                ) : (
+                  <p className={`text-xs ${subtleText}`}>
+                    You're connected with an external wallet (like MetaMask). Your recovery phrase and backup are managed directly in that wallet app, not here.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {quickViewItem && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setQuickViewId(null)}>
           <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} overflow-hidden max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
@@ -1056,45 +1212,104 @@ export default function Ecommerce() {
 
       {walletChoiceOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder}`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder} max-h-[90vh] overflow-y-auto`}>
             <h3 className="font-semibold text-lg mb-1">Connect Your Wallet</h3>
-            <p className={`text-xs ${subtleText} mb-4`}>Choose how you'd like to connect. On mobile, WalletConnect usually works best.</p>
-            <div className="space-y-2 mb-4">
-              {(() => {
-                const injectedConnectors = connectors.filter((c) => c.type === 'injected');
-                const hasSingleInjected = injectedConnectors.length <= 1;
-                return connectors.map((connector) => {
-                  const isInjected = connector.type === 'injected';
-                  const injectedAvailable = typeof window !== 'undefined' && !!(window as any).ethereum;
-                  const useGenericLabel = isInjected && hasSingleInjected;
-                  const label = useGenericLabel
-                    ? (injectedAvailable ? "Continue with this Wallet" : 'Browser Extension (MetaMask, etc.)')
-                    : connector.name;
-                  const isConnectingThis = connectingConnectorId === connector.uid;
+            <p className={`text-xs ${subtleText} mb-4`}>New here? Pick any option below — a wallet is created for you automatically.</p>
 
-                  return (
-                    <button
-                      key={connector.uid}
-                      onClick={() => chooseConnector(connector)}
-                      disabled={isConnectingThis}
-                      className={`w-full py-3 px-4 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} text-left font-medium transition-colors disabled:opacity-50 ${isInjected && injectedAvailable ? 'ring-2 ring-lime-400' : ''}`}
-                    >
-                      {label}
-                      {isInjected && injectedAvailable && (
-                        <span className={`block text-xs font-normal mt-0.5 ${subtleText}`}>Recommended — you're already in a wallet browser</span>
-                      )}
-                      {isConnectingThis && (
-                        <span className="block text-xs font-normal mt-0.5 text-sky-500">Connecting...</span>
-                      )}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-            {connectError && (
-              <p className="text-xs text-red-500 mb-3">{connectError.message}</p>
+            {oauthErr && (
+              <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                <p className="text-xs text-red-500 font-medium">{oauthErr}</p>
+              </div>
             )}
-            <button onClick={() => setWalletChoiceOpen(false)} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>
+
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <button
+                onClick={handleGoogleLogin}
+                disabled={!privyReady}
+                className={`flex items-center justify-center gap-2 py-3 px-3 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} font-medium text-sm disabled:opacity-50`}
+              >
+                <span className="w-5 h-5 rounded-full bg-white border border-zinc-300 flex items-center justify-center text-[11px] font-bold text-blue-500">G</span>
+                Google
+              </button>
+              <button
+                onClick={handleTwitterLogin}
+                disabled={!privyReady}
+                className={`flex items-center justify-center gap-2 py-3 px-3 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} font-medium text-sm disabled:opacity-50`}
+              >
+                <span className="w-5 h-5 rounded-full bg-black flex items-center justify-center text-[11px] font-bold text-white">𝕏</span>
+                X
+              </button>
+            </div>
+
+            <button
+              onClick={handlePasskeyLogin}
+              disabled={!privyReady}
+              className={`w-full flex items-center justify-center gap-2 py-3 px-3 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} font-medium text-sm disabled:opacity-50 mb-3`}
+            >
+              🔑 Continue with Passkey
+            </button>
+
+            <div className={`p-3 rounded-2xl border ${cardBorder} mb-3`}>
+              {emailStep === 'input' ? (
+                <div className="space-y-2">
+                  <label className={`text-xs ${subtleText} block`}>Or continue with email</label>
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    placeholder="you@example.com"
+                    className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-3 py-2 outline-none focus:border-lime-400 text-sm`}
+                  />
+                  <button
+                    onClick={handleSendCode}
+                    disabled={emailBusy || !emailInput.trim()}
+                    className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl text-sm font-semibold disabled:opacity-50"
+                  >
+                    {emailBusy ? 'Sending...' : 'Send Code'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className={`text-xs ${subtleText} block`}>Enter the code sent to {emailInput}</label>
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    placeholder="123456"
+                    className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-3 py-2 outline-none focus:border-lime-400 text-sm tracking-widest`}
+                  />
+                  <button
+                    onClick={handleVerifyCode}
+                    disabled={emailBusy || !codeInput.trim()}
+                    className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl text-sm font-semibold disabled:opacity-50"
+                  >
+                    {emailBusy ? 'Verifying...' : 'Verify & Continue'}
+                  </button>
+                  <button onClick={resetEmailFlow} className={`w-full text-xs ${subtleText} py-1`}>
+                    Use a different email
+                  </button>
+                </div>
+              )}
+              {emailErr && <p className="text-xs text-red-500 mt-2">{emailErr}</p>}
+            </div>
+
+            <div className={`flex items-center gap-3 mb-3`}>
+              <div className={`flex-1 h-px ${darkMode ? 'bg-white/10' : 'bg-zinc-200'}`} />
+              <span className={`text-xs ${subtleText}`}>or use your own wallet</span>
+              <div className={`flex-1 h-px ${darkMode ? 'bg-white/10' : 'bg-zinc-200'}`} />
+            </div>
+
+            <div className="space-y-2 mb-4">
+              <button
+                onClick={() => { connectWallet(); setWalletChoiceOpen(false); }}
+                className={`w-full py-3 px-4 rounded-2xl border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} text-left font-medium transition-colors`}
+              >
+                Connect Existing Wallet
+                <span className={`block text-xs font-normal mt-0.5 ${subtleText}`}>MetaMask, WalletConnect, Coinbase Wallet, and more</span>
+              </button>
+            </div>
+
+            <button onClick={() => { setWalletChoiceOpen(false); resetEmailFlow(); setOauthErr(''); }} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>
               Cancel
             </button>
           </div>
@@ -1109,25 +1324,29 @@ export default function Ecommerce() {
 
             <div className="space-y-4 mb-6">
               <div>
-                <p className="font-semibold text-sm mb-1">1. Get a wallet</p>
-                <p className={`text-sm ${subtleText} mb-2`}>A wallet is what lets you use this site. If you don't have one yet:</p>
+                <p className="font-semibold text-sm mb-1">1. Connect</p>
+                <p className={`text-sm ${subtleText} mb-2`}>Tap the ☰ menu, then <strong>Connect Wallet</strong>. The easiest way in is <strong>Google, X, Passkey, or email</strong> — no wallet app needed, we create one for you automatically.</p>
+              </div>
+
+              <div>
+                <p className="font-semibold text-sm mb-1">Prefer your own wallet?</p>
+                <p className={`text-sm ${subtleText} mb-2`}>You can still connect MetaMask or WalletConnect from the same screen. If so:</p>
                 <ul className={`text-sm ${subtleText} list-disc list-inside space-y-1`}>
                   <li>On desktop: install the <strong>MetaMask</strong> browser extension from metamask.io</li>
                   <li>On mobile: install the <strong>MetaMask</strong> or <strong>Trust Wallet</strong> app from your app store</li>
-                  <li>Open it and choose "Create a new wallet"</li>
                 </ul>
               </div>
 
               <div className={`p-3 rounded-xl ${darkMode ? 'bg-amber-400/10 border-amber-400/30' : 'bg-amber-50 border-amber-200'} border`}>
-                <p className="font-semibold text-sm mb-1">⚠️ Protect your Secret Recovery Phrase</p>
+                <p className="font-semibold text-sm mb-1">⚠️ If you use your own wallet</p>
                 <p className={`text-sm ${subtleText}`}>
-                  When you create a wallet, you'll be shown 12 words called a <strong>Secret Recovery Phrase</strong>. Write it down on paper and keep it somewhere safe.
-                  <strong> Never</strong> type it into any website, never share it with anyone (including us), and never take a screenshot of it. Anyone with those words can take everything in your wallet.
+                  You'll be shown 12 words called a <strong>Secret Recovery Phrase</strong>. Write it down on paper and keep it somewhere safe.
+                  <strong> Never</strong> type it into any website, never share it with anyone (including us), and never take a screenshot of it.
                 </p>
               </div>
 
               <div>
-                <p className="font-semibold text-sm mb-1">2. Add BNB Smart Chain Testnet</p>
+                <p className="font-semibold text-sm mb-1">2. Add BNB Smart Chain Testnet (own wallet only)</p>
                 <div className={`text-xs ${subtleText} p-3 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} space-y-1 font-mono`}>
                   <p>Network Name: BNB Smart Chain Testnet</p>
                   <p>RPC URL: https://data-seed-prebsc-1-s1.bnbchain.org:8545</p>
@@ -1143,12 +1362,7 @@ export default function Ecommerce() {
               </div>
 
               <div>
-                <p className="font-semibold text-sm mb-1">4. Connect your wallet</p>
-                <p className={`text-sm ${subtleText}`}>Tap the ☰ menu at the top right, then <strong>Connect Wallet</strong>. On mobile, choose <strong>WalletConnect</strong> and scan the QR code (or follow the prompt to open your wallet app) — this tends to work more smoothly than a browser extension on phones.</p>
-              </div>
-
-              <div>
-                <p className="font-semibold text-sm mb-1">5. Try it out</p>
+                <p className="font-semibold text-sm mb-1">4. Try it out</p>
                 <p className={`text-sm ${subtleText}`}>Tap any item and use the cart icon on the image to add it to your basket, then tap the cart icon at the top to checkout. Funds are held safely in escrow until you confirm receipt — try releasing funds, cancelling, or raising a dispute to see the full flow.</p>
               </div>
             </div>

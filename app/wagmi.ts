@@ -1,5 +1,6 @@
-import { createConfig, http } from 'wagmi';
+import { createConfig } from '@privy-io/wagmi';
 import { bscTestnet } from 'wagmi/chains';
+import { http } from 'wagmi';
 import { injected, walletConnect } from 'wagmi/connectors';
 
 export const config = createConfig({
