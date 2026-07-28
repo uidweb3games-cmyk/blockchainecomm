@@ -16,6 +16,15 @@ const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
 const CONNECT_TIMEOUT_MS = 60000;
 
 const CATEGORIES = ['Electronics', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
+const CATEGORY_ICONS: Record<string, string> = {
+  'Electronics': '📱',
+  'Clothing': '👕',
+  'Shoes': '👟',
+  'Home & Furniture': '🛋️',
+  'Beauty & Health': '💄',
+  'Toys & Games': '🎮',
+  'Other': '🏷️',
+};
 
 const LIST_CURRENCIES: Record<string, { label: string; address: string; symbol: string }> = {
   BNB: { label: 'tBNB', address: ZERO_ADDRESS, symbol: 'tBNB' },
@@ -67,6 +76,28 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
   );
 }
 
+function OpenSpaceLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 300 110" className={className} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a3e635" />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M 62.31 26.17 A 36 36 0 1 0 62.31 93.83"
+        fill="none"
+        stroke="url(#osGrad)"
+        strokeWidth="12"
+        strokeLinecap="round"
+      />
+      <text x="66" y="30" fontFamily="system-ui, sans-serif" fontSize="18" fontWeight="500" fill="url(#osGrad)">pen</text>
+      <text x="30" y="80" fontFamily="system-ui, sans-serif" fontSize="46" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
+    </svg>
+  );
+}
+
 export default function Ecommerce() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -91,6 +122,10 @@ export default function Ecommerce() {
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [connectingConnectorId, setConnectingConnectorId] = useState<string | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [quickViewId, setQuickViewId] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -329,11 +364,15 @@ export default function Ecommerce() {
   const filterAddress = viewCurrency === ALL_KEY ? null : VIEW_CURRENCIES[viewCurrency].address;
   const shopItems = allItems.filter((item) => {
     if (item.delisted && !item.sold) return false;
+    if (item.sold) return false;
     if (filterAddress !== null && item.paymentToken.toLowerCase() !== filterAddress.toLowerCase()) return false;
     if (viewCategory !== ALL_CATEGORIES && item.category !== viewCategory) return false;
     if (searchQuery.trim() && !item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
     return true;
   });
+
+  const adItems = allItems.filter((item) => !item.sold && !(item.delisted && !item.sold));
+  const adStrip = adItems.length > 0 ? [...adItems, ...adItems] : [];
 
   const myListings = isConnected
     ? allItems.filter((item) => item.seller.toLowerCase() === address?.toLowerCase() && !(item.delisted && !item.sold))
@@ -413,6 +452,27 @@ export default function Ecommerce() {
     return <div className={`w-full py-2.5 text-center ${subtleText} text-sm`}>Awaiting buyer confirmation</div>;
   };
 
+  const renderShopThumb = (item: ParsedItem) => {
+    const displayImage = item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : FALLBACK_IMAGE;
+    return (
+      <button
+        key={item.id}
+        onClick={() => setQuickViewId(item.id)}
+        className={`group text-left ${cardBg} rounded-2xl overflow-hidden border ${cardBorder} hover:border-lime-400/60 transition-all duration-300`}
+      >
+        <div className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} overflow-hidden relative`}>
+          <img src={displayImage} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+          {cart.includes(item.id) && (
+            <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-sky-400 text-zinc-900 flex items-center justify-center text-xs font-bold">✓</span>
+          )}
+        </div>
+        <div className="px-2.5 py-2">
+          <p className="text-sm font-medium truncate">{item.name}</p>
+        </div>
+      </button>
+    );
+  };
+
   const renderItemCard = (item: ParsedItem, context: 'shop' | 'sell') => {
     const { id, name, imageUrl, category, price, seller, buyer, sold, released, cancelled, shippingStatus, paymentToken, disputed } = item;
     const isSeller = isConnected && address?.toLowerCase() === seller?.toLowerCase();
@@ -437,17 +497,7 @@ export default function Ecommerce() {
             <span className="text-[11px] uppercase tracking-wider text-lime-600 font-semibold">Verified on-chain</span>
           </div>
           <h3 className="font-semibold text-lg sm:text-xl mb-2">{name}</h3>
-
-          {context === 'shop' ? (
-            <div className="flex items-center gap-2 mb-3 sm:mb-4">
-              <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>
-                {seller.slice(2, 4).toUpperCase()}
-              </div>
-              <p className={`text-xs ${subtleText} font-mono`}>{seller.slice(0, 6)}...{seller.slice(-4)}</p>
-            </div>
-          ) : (
-            <p className={`text-xs ${subtleText} font-mono mb-3 sm:mb-4`}>{sold ? `Buyer: ${buyer.slice(0, 6)}...${buyer.slice(-4)}` : 'Not sold yet'}</p>
-          )}
+          <p className={`text-xs ${subtleText} font-mono mb-3 sm:mb-4`}>{sold ? `Buyer: ${buyer.slice(0, 6)}...${buyer.slice(-4)}` : 'Not sold yet'}</p>
 
           <span className="text-xl sm:text-2xl font-mono block mb-3 sm:mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
             {(Number(price) / 1e18).toString()} {symbol}
@@ -478,22 +528,7 @@ export default function Ecommerce() {
             </div>
           )}
 
-          {context === 'shop' && !sold ? (
-            !isConnected ? (
-              <button onClick={openWalletChoice} className={`w-full py-2.5 ${darkMode ? 'bg-white text-black hover:bg-zinc-200' : 'bg-zinc-900 text-white hover:bg-zinc-800'} rounded-2xl font-medium transition-colors`}>
-                Connect to Buy
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <button onClick={() => openShippingModal('single', id)} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 active:scale-[0.985] transition-all disabled:opacity-50">
-                  {isPending ? 'Confirm in wallet...' : 'Buy Now'}
-                </button>
-                <button onClick={() => toggleCart(id, paymentToken)} className={`w-full py-2 rounded-xl text-sm font-medium transition-colors border ${inCart ? 'bg-sky-400 text-zinc-900 border-sky-400' : `${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} ${cardBorder}`}`}>
-                  {inCart ? '✓ In Cart' : 'Add to Cart'}
-                </button>
-              </div>
-            )
-          ) : context === 'sell' && !sold ? (
+          {context === 'sell' && !sold ? (
             <button onClick={() => call('delistItem', [BigInt(id)])} disabled={isPending} className="w-full py-2 text-red-500 hover:text-red-600 text-xs font-medium transition-colors border border-red-500/30 rounded-xl">
               Remove Listing
             </button>
@@ -505,127 +540,132 @@ export default function Ecommerce() {
     );
   };
 
+  const quickViewItem = quickViewId ? allItems.find((i) => i.id === quickViewId) ?? null : null;
+
   return (
-    <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-24 flex flex-col overflow-x-hidden`}>
+    <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 sm:py-4">
-          {/* Row 1: logo + nav tabs (left) ... dark mode + wallet controls (always top-right) */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 overflow-x-auto no-scrollbar">
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-[0_0_15px_rgba(163,230,53,0.4)] shrink-0">
-                <span className="text-zinc-900 font-bold text-lg sm:text-xl">O</span>
-              </div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center gap-3">
+          <OpenSpaceLogo className="h-11 sm:h-14 w-auto shrink-0" />
 
-              <div className={`flex items-center gap-1 p-1 rounded-2xl ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} shrink-0`}>
-                <button onClick={() => setActiveTab('shop')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
-                  🛍 Buy
-                </button>
-                <button onClick={() => setActiveTab('sell')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
-                  🏪 Sell
-                </button>
-                {isAdmin && (
-                  <button onClick={() => setActiveTab('analytics')} className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold transition-colors whitespace-nowrap ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>
-                    📊 Analytics
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={() => setDarkMode(!darkMode)} className={`flex w-9 h-9 sm:w-10 sm:h-10 rounded-full border ${cardBorder} items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
-                {darkMode ? '☀️' : '🌙'}
-              </button>
-              {isConnected ? (
-                <div className="flex items-center gap-2">
-                  {isAdmin && <span className="hidden sm:inline px-3 py-1.5 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-xl text-xs font-semibold">ADMIN</span>}
-                  <span className={`px-3 py-2 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-2xl text-xs sm:text-sm font-mono`}>
-                    {address?.slice(0, 4)}...{address?.slice(-4)}
-                  </span>
-                  <button onClick={() => disconnect()} className="px-3 sm:px-5 py-2 sm:py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-xs sm:text-sm font-medium transition-colors whitespace-nowrap">Disconnect</button>
-                </div>
-              ) : (
-                <button onClick={openWalletChoice} className="px-3 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl text-xs sm:text-sm font-semibold hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(163,230,53,0.3)] whitespace-nowrap">
-                  Connect Wallet
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Row 2: search bar (shop tab only) — full width on its own row */}
-          {activeTab === 'shop' && (
-            <div className={`mt-3 flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden w-full`}>
+          {activeTab === 'shop' ? (
+            <div className={`flex-1 min-w-0 flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden`}>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search items..."
-                className="flex-1 min-w-0 bg-transparent px-4 sm:px-5 py-2.5 outline-none text-sm"
+                className="flex-1 min-w-0 bg-transparent px-4 py-2.5 outline-none text-sm"
               />
-              <button title="Visual search — coming soon" className={`px-3 ${subtleText} hover:${text} transition-colors shrink-0`} onClick={() => alert('Visual/camera search is a planned future feature.')}>
-                📷
-              </button>
-              <div className="w-9 h-9 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">
+              <div className="w-8 h-8 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">
                 🔍
               </div>
             </div>
+          ) : (
+            <div className="flex-1 min-w-0" />
           )}
 
-          {/* Row 3: filters + secondary actions — horizontally scrollable, never wraps/pushes layout */}
-          {(activeTab === 'shop' || (isConnected && (disputeEligible.length > 0 || (isAdmin && disputedItems.length > 0)))) && (
-            <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar">
-              <button onClick={() => setHelpModalOpen(true)} title="How to test" className={`w-9 h-9 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity font-semibold shrink-0`}>
-                ❓
-              </button>
+          <div className="relative shrink-0">
+            <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity text-lg`}>
+              💱
+            </button>
+            {currencyMenuOpen && (
+              <div className={`absolute right-0 mt-2 w-44 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
+                {Object.keys(VIEW_CURRENCIES).map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => { setViewCurrency(key); setCurrencyMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium ${viewCurrency === key ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                  >
+                    {VIEW_CURRENCIES[key].label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-              {activeTab === 'shop' && (
-                <>
-                  <select value={viewCategory} onChange={(e) => setViewCategory(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400 shrink-0`}>
-                    <option value={ALL_CATEGORIES}>{ALL_CATEGORIES}</option>
-                    {CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}
-                  </select>
-                  <select value={viewCurrency} onChange={(e) => setViewCurrency(e.target.value)} className={`px-3 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} outline-none focus:border-lime-400 shrink-0`}>
-                    {Object.keys(VIEW_CURRENCIES).map((key) => (<option key={key} value={key}>{VIEW_CURRENCIES[key].label}</option>))}
-                  </select>
-                </>
-              )}
+          <button onClick={() => setCartOpen(true)} className={`relative w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0`}>
+            🛒
+            {cart.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>
+            )}
+          </button>
 
-              {isConnected && disputeEligible.length > 0 && (
-                <button onClick={() => setDisputeCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-red-400/40 text-red-500 hover:bg-red-500/10 transition-colors shrink-0 whitespace-nowrap">
-                  ⚠ Open Dispute
-                </button>
-              )}
-              {isAdmin && disputedItems.length > 0 && (
-                <button onClick={() => setResolveCenterOpen(true)} className="px-3 py-2 rounded-xl text-sm font-medium border border-amber-400/40 text-amber-600 hover:bg-amber-400/10 transition-colors shrink-0 whitespace-nowrap">
-                  Resolve Disputes ({disputedItems.length})
-                </button>
-              )}
-            </div>
-          )}
+          <button onClick={() => setMenuOpen(true)} className={`w-10 h-10 rounded-full border ${cardBorder} flex items-center justify-center hover:opacity-80 transition-opacity shrink-0 text-lg`}>
+            ☰
+          </button>
         </div>
+
+        {activeTab === 'shop' && adStrip.length > 0 && (
+          <div className={`border-t ${cardBorder} py-3 overflow-hidden`}>
+            <div className="flex items-center gap-1 px-4 sm:px-8 mb-2">
+              <span className={`text-[11px] uppercase tracking-wide font-semibold ${subtleText}`}>Sponsored</span>
+            </div>
+            <div className="overflow-hidden">
+              <div className="flex gap-3 w-max animate-marquee">
+                {adStrip.map((item, i) => {
+                  const displayImage = item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : FALLBACK_IMAGE;
+                  return (
+                    <button
+                      key={`${item.id}-${i}`}
+                      onClick={() => setQuickViewId(item.id)}
+                      className={`flex items-center gap-3 ${cardBg} border ${cardBorder} rounded-2xl pr-4 py-1.5 shrink-0 hover:border-lime-400/60 transition-colors`}
+                    >
+                      <img src={displayImage} alt={item.name} className="w-16 h-16 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                      <div className="text-left">
+                        <p className="text-sm font-medium truncate max-w-[140px]">{item.name}</p>
+                        <p className="text-xs font-mono text-lime-500">{(Number(item.price) / 1e18).toString()} {currencySymbol(item.paymentToken)}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 flex-1 w-full">
         {activeTab === 'shop' ? (
           <>
             <div className="mb-6 sm:mb-8">
-              <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">
-                The Marketplace,<br />
-                <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Decentralized.</span>
+              <h2 className="text-2xl sm:text-5xl font-black tracking-tighter">
+                The Decentralised<br />
+                <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">OpenSpace Market</span>
               </h2>
-              <p className={`${subtleText} text-base sm:text-lg`}>
-                {viewCategory !== ALL_CATEGORIES ? `${viewCategory} — ` : ''}{viewCurrency === ALL_KEY ? 'showing items in all currencies' : `showing items priced in ${VIEW_CURRENCIES[viewCurrency].label}`} — funds held in escrow until you confirm.
-              </p>
             </div>
 
-            {count === 0 ? (
-              <p className={subtleText}>No items listed yet.</p>
-            ) : shopItems.length === 0 ? (
-              <p className={subtleText}>No items found{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {shopItems.map((item) => renderItemCard(item, 'shop'))}
+            <div className="flex gap-4 sm:gap-6">
+              {/* Category column — icon + label, stacked vertically, starts here (below heading, level with grid) */}
+              <div className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20">
+                <button onClick={() => setViewCategory(ALL_CATEGORIES)} className="flex flex-col items-center gap-1">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg ${viewCategory === ALL_CATEGORIES ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
+                    🗂️
+                  </div>
+                  <span className={`text-[10px] font-medium ${viewCategory === ALL_CATEGORIES ? text : subtleText}`}>All</span>
+                </button>
+                {CATEGORIES.map((c) => (
+                  <button key={c} onClick={() => setViewCategory(c)} className="flex flex-col items-center gap-1">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg ${viewCategory === c ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
+                      {CATEGORY_ICONS[c]}
+                    </div>
+                    <span className={`text-[10px] font-medium text-center leading-tight ${viewCategory === c ? text : subtleText}`}>{c}</span>
+                  </button>
+                ))}
               </div>
-            )}
+
+              <div className="flex-1 min-w-0">
+                {count === 0 ? (
+                  <p className={subtleText}>No items listed yet.</p>
+                ) : shopItems.length === 0 ? (
+                  <p className={subtleText}>No items found{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                    {shopItems.map((item) => renderShopThumb(item))}
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         ) : activeTab === 'sell' ? (
           <>
@@ -745,35 +785,177 @@ export default function Ecommerce() {
 
       <footer className={`border-t ${cardBorder} mt-12`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center">
-              <span className="text-zinc-900 font-bold text-xs">O</span>
-            </div>
-            <span className={`text-sm ${subtleText}`}>Decentralized, escrow-protected, testnet build</span>
-          </div>
+          <OpenSpaceLogo className="h-8 w-auto" />
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
 
-      {cart.length > 0 && cartCurrency && activeTab === 'shop' && (
-        <div className={`fixed bottom-0 left-0 right-0 ${cardBg} border-t ${cardBorder} backdrop-blur-xl z-50`}>
-          <div className="max-w-6xl mx-auto px-4 sm:px-8 py-4 flex items-center justify-between flex-wrap gap-3">
-            <div>
-              <span className="font-semibold">{cart.length} item{cart.length > 1 ? 's' : ''} in cart</span>
-              <span className={`ml-3 ${subtleText}`}>Subtotal: <span className="text-lime-500 font-mono">{(Number(cartSubtotal) / 1e18).toFixed(4)} {currencySymbol(cartCurrency)}</span></span>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => { setCart([]); setCartCurrency(null); }} className={`px-4 py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>Clear Cart</button>
-              <button onClick={() => openShippingModal('cart')} disabled={isPending} className="px-6 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
-                {isPending ? 'Confirm in wallet...' : 'Checkout'}
+      {quickViewItem && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setQuickViewId(null)}>
+          <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} overflow-hidden max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative`}>
+              <img
+                src={quickViewItem.imageUrl && quickViewItem.imageUrl.trim() !== '' ? quickViewItem.imageUrl : FALLBACK_IMAGE}
+                alt={quickViewItem.name}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
+              />
+              <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
+              <button
+                onClick={() => toggleCart(quickViewItem.id, quickViewItem.paymentToken)}
+                className={`absolute bottom-3 right-3 w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg transition-all ${cart.includes(quickViewItem.id) ? 'bg-sky-400 text-zinc-900' : 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900'}`}
+                title={cart.includes(quickViewItem.id) ? 'Remove from cart' : 'Add to cart'}
+              >
+                {cart.includes(quickViewItem.id) ? '✓' : '🛒'}
               </button>
+            </div>
+            <div className="p-6">
+              <div className="flex items-center gap-1.5 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
+                <span className="text-[11px] uppercase tracking-wider text-lime-600 font-semibold">Verified on-chain</span>
+              </div>
+              <h3 className="font-semibold text-xl mb-2">{quickViewItem.name}</h3>
+              <div className="flex items-center gap-2 mb-3">
+                <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewItem.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>
+                  {quickViewItem.seller.slice(2, 4).toUpperCase()}
+                </div>
+                <p className={`text-xs ${subtleText} font-mono`}>{quickViewItem.seller.slice(0, 6)}...{quickViewItem.seller.slice(-4)}</p>
+              </div>
+              <span className="text-2xl font-mono block bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+                {(Number(quickViewItem.price) / 1e18).toString()} {currencySymbol(quickViewItem.paymentToken)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cartOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setCartOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Your Cart</h3>
+              <button onClick={() => setCartOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+
+            {cart.length === 0 ? (
+              <p className={`${subtleText} text-sm py-8 text-center`}>Your cart is empty. Tap any item to add it.</p>
+            ) : (
+              <>
+                <div className="space-y-3 mb-5">
+                  {cart.map((id) => {
+                    const item = allItems.find((i) => i.id === id);
+                    if (!item) return null;
+                    const displayImage = item.imageUrl && item.imageUrl.trim() !== '' ? item.imageUrl : FALLBACK_IMAGE;
+                    return (
+                      <div key={id} className={`flex items-center gap-3 p-2 rounded-xl border ${cardBorder}`}>
+                        <img src={displayImage} alt={item.name} className="w-14 h-14 rounded-lg object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <p className="text-sm font-mono text-lime-500">{(Number(item.price) / 1e18).toString()} {currencySymbol(item.paymentToken)}</p>
+                        </div>
+                        <button onClick={() => toggleCart(id, item.paymentToken)} className="text-red-500 text-xs font-medium shrink-0 px-2">Remove</button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className={`mb-5 p-4 rounded-2xl ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} space-y-1.5`}>
+                  <div className="flex justify-between text-sm">
+                    <span className={subtleText}>Subtotal</span>
+                    <span className="font-mono">{(Number(cartSubtotal) / 1e18).toFixed(4)} {cartCurrency ? currencySymbol(cartCurrency) : ''}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className={subtleText}>Buyer fee ({buyerFeePct}%)</span>
+                    <span className="font-mono">{(Number(cartTotal - cartSubtotal) / 1e18).toFixed(4)} {cartCurrency ? currencySymbol(cartCurrency) : ''}</span>
+                  </div>
+                  <div className={`flex justify-between text-sm font-semibold pt-1.5 border-t ${cardBorder}`}>
+                    <span>Total</span>
+                    <span className="font-mono text-lime-500">{(Number(cartTotal) / 1e18).toFixed(4)} {cartCurrency ? currencySymbol(cartCurrency) : ''}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {!isConnected ? (
+                    <button onClick={() => { setCartOpen(false); openWalletChoice(); }} className={`w-full py-3 ${darkMode ? 'bg-white text-black hover:bg-zinc-200' : 'bg-zinc-900 text-white hover:bg-zinc-800'} rounded-2xl font-medium transition-colors`}>
+                      Connect to Checkout
+                    </button>
+                  ) : (
+                    <button onClick={() => { setCartOpen(false); openShippingModal('cart'); }} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
+                      Checkout
+                    </button>
+                  )}
+                  <button onClick={() => { setCart([]); setCartCurrency(null); }} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>
+                    Clear Cart
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {menuOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setMenuOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Menu</h3>
+              <button onClick={() => setMenuOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+
+            <div className="space-y-1 mb-4">
+              <button onClick={() => { setActiveTab('shop'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                🛍 Buy
+              </button>
+              <button onClick={() => { setActiveTab('sell'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                🏪 Become a Seller / Merchant
+              </button>
+              {isAdmin && (
+                <button onClick={() => { setActiveTab('analytics'); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                  📊 Analytics
+                </button>
+              )}
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4 mb-4 space-y-1`}>
+              <button onClick={() => { setDarkMode(!darkMode); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
+              </button>
+              <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                ❓ How to Test
+              </button>
+              {isConnected && disputeEligible.length > 0 && (
+                <button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                  ⚠ Open Dispute
+                </button>
+              )}
+              {isAdmin && disputedItems.length > 0 && (
+                <button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                  Resolve Disputes ({disputedItems.length})
+                </button>
+              )}
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4`}>
+              {isConnected ? (
+                <div className="space-y-2">
+                  {isAdmin && <span className="inline-block px-3 py-1.5 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-xl text-xs font-semibold mb-1">ADMIN</span>}
+                  <div className={`px-4 py-2.5 ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder} rounded-2xl text-sm font-mono text-center`}>
+                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  </div>
+                  <button onClick={() => { disconnect(); setMenuOpen(false); }} className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-sm font-medium transition-colors">Disconnect</button>
+                </div>
+              ) : (
+                <button onClick={() => { setMenuOpen(false); openWalletChoice(); }} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl text-sm font-semibold hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                  Connect Wallet
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
       {shippingModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Shipping Details</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Stored privately in your browser — never sent to the blockchain.</p>
@@ -806,7 +988,7 @@ export default function Ecommerce() {
 
             <div className="space-y-2">
               <button onClick={confirmShippingAndBuy} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
-                {isPending ? 'Confirm in wallet...' : 'Confirm & Pay'}
+                {isPending ? 'Confirm in wallet...' : 'Buy / Pay'}
               </button>
               <button onClick={() => setShippingModal(null)} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>
                 Cancel
@@ -817,7 +999,7 @@ export default function Ecommerce() {
       )}
 
       {disputeCenterOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Open a Dispute</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Select the trade you have an issue with.</p>
@@ -849,7 +1031,7 @@ export default function Ecommerce() {
       )}
 
       {resolveCenterOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Resolve Disputes</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Review and settle each disputed trade.</p>
@@ -872,7 +1054,7 @@ export default function Ecommerce() {
       )}
 
       {walletChoiceOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Connect Your Wallet</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Choose how you'd like to connect. On mobile, WalletConnect usually works best.</p>
@@ -919,7 +1101,7 @@ export default function Ecommerce() {
       )}
 
       {helpModalOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto`}>
             <h3 className="font-semibold text-xl mb-1">Welcome to {BRAND_NAME} 👋</h3>
             <p className={`text-sm ${subtleText} mb-5`}>This is a testnet — everything here uses fake, free test money. Nothing costs real funds. Here's how to get started:</p>
@@ -961,12 +1143,12 @@ export default function Ecommerce() {
 
               <div>
                 <p className="font-semibold text-sm mb-1">4. Connect your wallet</p>
-                <p className={`text-sm ${subtleText}`}>Click "Connect Wallet" at the top right. On mobile, choose <strong>WalletConnect</strong> and scan the QR code (or follow the prompt to open your wallet app) — this tends to work more smoothly than a browser extension on phones.</p>
+                <p className={`text-sm ${subtleText}`}>Tap the ☰ menu at the top right, then <strong>Connect Wallet</strong>. On mobile, choose <strong>WalletConnect</strong> and scan the QR code (or follow the prompt to open your wallet app) — this tends to work more smoothly than a browser extension on phones.</p>
               </div>
 
               <div>
                 <p className="font-semibold text-sm mb-1">5. Try it out</p>
-                <p className={`text-sm ${subtleText}`}>Use <strong>Buy</strong> to browse and purchase items, or <strong>Sell</strong> to list your own. Funds are held safely in escrow until the buyer confirms — try releasing funds, cancelling, or raising a dispute to see the full flow.</p>
+                <p className={`text-sm ${subtleText}`}>Tap any item and use the cart icon on the image to add it to your basket, then tap the cart icon at the top to checkout. Funds are held safely in escrow until you confirm receipt — try releasing funds, cancelling, or raising a dispute to see the full flow.</p>
               </div>
             </div>
 
