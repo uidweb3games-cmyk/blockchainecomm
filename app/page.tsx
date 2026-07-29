@@ -164,6 +164,8 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embeddedWallet, privyWallets]);
 
+  const { address, isConnected } = useAccount();
+
   const handleGoogleLogin = async () => {
     setOauthErr('');
     try {
@@ -225,13 +227,13 @@ export default function Ecommerce() {
   };
 
   useEffect(() => {
-    if (privyAuthenticated && walletChoiceOpen) {
+    if (isConnected && walletChoiceOpen) {
       setWalletChoiceOpen(false);
       resetEmailFlow();
       setOauthErr('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privyAuthenticated]);
+  }, [isConnected]);
 
   useEffect(() => {
     setMounted(true);
@@ -242,7 +244,6 @@ export default function Ecommerce() {
     }
   }, []);
 
-  const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
   const { writeContract, isPending, data: txHash } = useWriteContract();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
@@ -696,6 +697,12 @@ export default function Ecommerce() {
   return (
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
+        {privyAuthenticated && !isConnected && (
+          <div className="bg-sky-500 text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-2">
+            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+            Finishing sign-in, setting up your wallet...
+          </div>
+        )}
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
           <OpenSpaceLogo className="h-12 sm:h-16 w-auto shrink-0" />
 
@@ -1341,6 +1348,13 @@ export default function Ecommerce() {
             {oauthErr && (
               <div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
                 <p className="text-xs text-red-500 font-medium">{oauthErr}</p>
+              </div>
+            )}
+
+            {privyAuthenticated && !isConnected && (
+              <div className="mb-3 p-3 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                <p className="text-xs text-sky-600 font-medium">Setting up your wallet, one moment...</p>
               </div>
             )}
 
