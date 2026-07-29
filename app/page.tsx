@@ -148,9 +148,24 @@ export default function Ecommerce() {
   const { connectWallet } = useConnectWallet();
   const { wallets: privyWallets } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
+  const { address, isConnected } = useAccount();
 
   const embeddedWallet = privyWallets.find((w) => w.walletClientType === 'privy');
   const hasEmbeddedWallet = !!embeddedWallet;
+
+  // Diagnostic logging: prints every stage of the login/wallet-sync process with
+  // a timestamp, so a single console screenshot shows exactly where things stall.
+  useEffect(() => {
+    console.log(`[${new Date().toLocaleTimeString()}] privyReady=${privyReady} privyAuthenticated=${privyAuthenticated}`);
+  }, [privyReady, privyAuthenticated]);
+
+  useEffect(() => {
+    console.log(`[${new Date().toLocaleTimeString()}] privyWallets.length=${privyWallets.length} embeddedWallet=${embeddedWallet ? embeddedWallet.address : 'none'}`);
+  }, [privyWallets, embeddedWallet]);
+
+  useEffect(() => {
+    console.log(`[${new Date().toLocaleTimeString()}] wagmi isConnected=${isConnected} address=${address ?? 'none'}`);
+  }, [isConnected, address]);
 
   // Official Privy pattern: just sync whichever wallet exists into wagmi.
   // Wallet creation itself is handled entirely by createOnLogin in layout.tsx —
@@ -163,8 +178,6 @@ export default function Ecommerce() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embeddedWallet, privyWallets]);
-
-  const { address, isConnected } = useAccount();
 
   const handleGoogleLogin = async () => {
     setOauthErr('');
