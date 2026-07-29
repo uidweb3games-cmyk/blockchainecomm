@@ -829,14 +829,42 @@ export default function Ecommerce() {
                             {isAdmin && <span className="inline-block px-2 py-1 bg-amber-400/20 text-amber-600 border border-amber-400/40 rounded-lg text-[11px] font-semibold mb-1">ADMIN</span>}
                             <button
                               onClick={copyAddress}
-                              className={`w-full px-3 py-2 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} border ${cardBorder} rounded-lg text-xs font-mono text-center transition-colors`}
+                              className={`w-full px-3 py-2 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} border ${cardBorder} rounded-lg text-xs font-mono flex items-center justify-center gap-2 transition-colors`}
                             >
-                              {addressCopied ? '✓ Copied full address!' : `${address?.slice(0, 6)}...${address?.slice(-4)} (tap to copy)`}
+                              {addressCopied ? (
+                                <span>✓ Copied!</span>
+                              ) : (
+                                <>
+                                  <span>{`${address?.slice(0, 6)}...${address?.slice(-4)}`}</span>
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-70">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                  </svg>
+                                </>
+                              )}
                             </button>
-                            <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText} space-y-0.5`}>
-                              <div>{myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}</div>
-                              <div>{myUsdcBalance !== undefined ? `${(Number(myUsdcBalance) / 1e18).toFixed(2)} USDC` : ''}</div>
-                              <div>{myUsdtBalance !== undefined ? `${(Number(myUsdtBalance) / 1e18).toFixed(2)} USDT` : ''}</div>
+                            <div className={`px-3 py-2.5 rounded-xl ${darkMode ? 'bg-gradient-to-br from-white/[0.06] to-white/[0.02]' : 'bg-gradient-to-br from-zinc-50 to-white'} border ${cardBorder} space-y-1.5`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">B</span>
+                                  <span className={`text-[11px] font-medium ${subtleText}`}>tBNB</span>
+                                </div>
+                                <span className="text-xs font-mono font-semibold tabular-nums">{myBnbBalance ? Number(formatEther(myBnbBalance.value)).toFixed(4) : '...'}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">U</span>
+                                  <span className={`text-[11px] font-medium ${subtleText}`}>USDC</span>
+                                </div>
+                                <span className="text-xs font-mono font-semibold tabular-nums">{myUsdcBalance !== undefined ? (Number(myUsdcBalance) / 1e18).toFixed(2) : '...'}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">U</span>
+                                  <span className={`text-[11px] font-medium ${subtleText}`}>USDT</span>
+                                </div>
+                                <span className="text-xs font-mono font-semibold tabular-nums">{myUsdtBalance !== undefined ? (Number(myUsdtBalance) / 1e18).toFixed(2) : '...'}</span>
+                              </div>
                             </div>
                             {loginIdentity && (
                               <div className={`px-3 pb-1 text-center text-[11px] ${subtleText} truncate`}>
