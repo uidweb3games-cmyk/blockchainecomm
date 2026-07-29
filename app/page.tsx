@@ -122,6 +122,7 @@ export default function Ecommerce() {
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [purchasesOpen, setPurchasesOpen] = useState(false);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -144,9 +145,7 @@ export default function Ecommerce() {
   const { setActiveWallet } = useSetActiveWallet();
   const { createWallet } = useCreateWallet();
 
-  const hasEmbeddedWallet = !!privyUser?.linkedAccounts?.find(
-    (a: any) => a.type === 'wallet' && a.walletClient === 'privy' && a.chainType === 'ethereum'
-  );
+  const hasEmbeddedWallet = privyWallets.some((w) => w.walletClientType === 'privy');
 
   useEffect(() => {
     if (privyAuthenticated && privyWallets.length === 0) {
@@ -254,10 +253,16 @@ export default function Ecommerce() {
     setWalletChoiceOpen(true);
   };
 
-  const handleDisconnect = () => {
-    privyLogout();
+  const handleDisconnect = async () => {
+    try {
+      await privyLogout();
+    } catch (e) {
+      // ignore - we're reloading regardless, which clears any stuck state
+    }
     disconnect();
-    setMenuOpen(false);
+    // A full reload wipes all in-memory Privy/wagmi state, preventing the
+    // "already logged in" issue that can happen if a session gets stuck.
+    window.location.href = '/';
   };
 
   const copyAddress = () => {
@@ -473,6 +478,10 @@ export default function Ecommerce() {
 
   const myListings = isConnected
     ? allItems.filter((item) => item.seller.toLowerCase() === address?.toLowerCase() && !(item.delisted && !item.sold))
+    : [];
+
+  const myPurchases = isConnected
+    ? allItems.filter((item) => item.sold && item.buyer.toLowerCase() === address?.toLowerCase())
     : [];
 
   const disputeEligible = isConnected
@@ -730,6 +739,9 @@ export default function Ecommerce() {
                             <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText}`}>
                               {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}
                             </div>
+                            <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                              📦 My Purchases {myPurchases.filter((i) => !i.released && !i.cancelled).length > 0 ? `(${myPurchases.filter((i) => !i.released && !i.cancelled).length})` : ''}
+                            </button>
                             <button onClick={() => { setSettingsOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               ⚙️ Wallet Settings
                             </button>
@@ -955,6 +967,24 @@ export default function Ecommerce() {
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
+
+      {purchasesOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setPurchasesOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">My Purchases</h3>
+              <button onClick={() => setPurchasesOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+            {myPurchases.length === 0 ? (
+              <p className={`${subtleText} text-sm py-8 text-center`}>You haven't bought anything yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {myPurchases.map((item) => renderItemCard(item, 'shop'))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setSettingsOpen(false)}>
