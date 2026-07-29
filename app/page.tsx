@@ -123,6 +123,11 @@ export default function Ecommerce() {
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [purchasesOpen, setPurchasesOpen] = useState(false);
+  const [sellerProfile, setSellerProfile] = useState<{ shopName: string; bio: string } | null>(null);
+  const [sellerRegOpen, setSellerRegOpen] = useState(false);
+  const [shopNameInput, setShopNameInput] = useState('');
+  const [shopBioInput, setShopBioInput] = useState('');
+  const [editingSellerProfile, setEditingSellerProfile] = useState(false);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -246,6 +251,35 @@ export default function Ecommerce() {
   const { writeContract, isPending, data: txHash } = useWriteContract();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
   const { data: myBnbBalance } = useBalance({ address, query: { enabled: !!address } });
+
+  const sellerProfileKey = (addr: string) => `seller_profile_${MARKETPLACE_ADDRESS}_${addr.toLowerCase()}`;
+
+  useEffect(() => {
+    if (address) {
+      const raw = localStorage.getItem(sellerProfileKey(address));
+      setSellerProfile(raw ? JSON.parse(raw) : null);
+    } else {
+      setSellerProfile(null);
+    }
+  }, [address]);
+
+  const saveSellerProfile = () => {
+    if (!address || !shopNameInput.trim()) {
+      alert('Please enter a shop name');
+      return;
+    }
+    const profile = { shopName: shopNameInput.trim(), bio: shopBioInput.trim() };
+    localStorage.setItem(sellerProfileKey(address), JSON.stringify(profile));
+    setSellerProfile(profile);
+    setSellerRegOpen(false);
+    setEditingSellerProfile(false);
+  };
+
+  const openSellerReg = () => {
+    setShopNameInput(sellerProfile?.shopName ?? '');
+    setShopBioInput(sellerProfile?.bio ?? '');
+    setSellerRegOpen(true);
+  };
 
   const openWalletChoice = () => {
     resetEmailFlow();
@@ -854,8 +888,13 @@ export default function Ecommerce() {
                   <span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Dashboard.</span>
                 </h2>
                 <p className={`${subtleText} text-base sm:text-lg`}>Manage your listings, shipments, and sales.</p>
+                {isConnected && sellerProfile && (
+                  <button onClick={openSellerReg} className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-sky-500 hover:text-sky-600">
+                    🏪 {sellerProfile.shopName} <span className={`text-xs ${subtleText} font-normal`}>(edit)</span>
+                  </button>
+                )}
               </div>
-              {isConnected && (
+              {isConnected && sellerProfile && (
                 <button onClick={() => setShowListForm(!showListForm)} className="px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
                   {showListForm ? 'Cancel' : '+ List an Item'}
                 </button>
@@ -867,6 +906,24 @@ export default function Ecommerce() {
                 <p className={`${subtleText} mb-4`}>Connect your wallet to start selling.</p>
                 <button onClick={openWalletChoice} className="px-6 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity">
                   Connect Wallet
+                </button>
+              </div>
+            ) : !sellerProfile ? (
+              <div className={`${cardBg} rounded-3xl p-8 border ${cardBorder} max-w-md`}>
+                <h3 className="font-semibold text-lg mb-1">Set up your shop</h3>
+                <p className={`text-sm ${subtleText} mb-5`}>Just a shop name and a short bio — this only takes a moment, and you only do it once.</p>
+                <div className="space-y-3 mb-5">
+                  <div>
+                    <label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label>
+                    <input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+                  </div>
+                  <div>
+                    <label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label>
+                    <textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell? What makes your shop worth checking out?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} />
+                  </div>
+                </div>
+                <button onClick={saveSellerProfile} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all">
+                  Create My Shop
                 </button>
               </div>
             ) : (
@@ -967,6 +1024,30 @@ export default function Ecommerce() {
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
+
+      {sellerRegOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setSellerRegOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">{sellerProfile ? 'Edit Shop Profile' : 'Set Up Your Shop'}</h3>
+              <button onClick={() => setSellerRegOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label>
+                <input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+              </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label>
+                <textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} />
+              </div>
+            </div>
+            <button onClick={saveSellerProfile} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all">
+              Save Changes
+            </button>
+          </div>
+        </div>
+      )}
 
       {purchasesOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setPurchasesOpen(false)}>
