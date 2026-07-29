@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
-import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
+import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import { parseEther, formatEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
@@ -146,27 +146,23 @@ export default function Ecommerce() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { loginWithPasskey } = useLoginWithPasskey();
   const { connectWallet } = useConnectWallet();
-  const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
+  const { wallets: privyWallets } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
-  const { createWallet } = useCreateWallet();
 
-  const hasEmbeddedWallet = privyWallets.some((w) => w.walletClientType === 'privy');
+  const embeddedWallet = privyWallets.find((w) => w.walletClientType === 'privy');
+  const hasEmbeddedWallet = !!embeddedWallet;
 
+  // Official Privy pattern: just sync whichever wallet exists into wagmi.
+  // Wallet creation itself is handled entirely by createOnLogin in layout.tsx —
+  // manually calling createWallet() here was fighting with that and causing
+  // "User already has an embedded wallet" errors that broke the login flow.
   useEffect(() => {
-    if (privyAuthenticated && privyWalletsReady && privyWallets.length === 0) {
-      createWallet().catch((e) => console.error('createWallet failed:', e));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privyAuthenticated, privyWalletsReady, privyWallets.length]);
-
-  useEffect(() => {
-    if (privyWallets.length > 0) {
-      const embeddedWallet = privyWallets.find((w) => w.walletClientType === 'privy');
-      const walletToActivate = embeddedWallet ?? privyWallets[0];
+    const walletToActivate = embeddedWallet ?? privyWallets[0];
+    if (walletToActivate) {
       setActiveWallet(walletToActivate).catch((e) => console.error('setActiveWallet failed:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privyWallets]);
+  }, [embeddedWallet, privyWallets]);
 
   const handleGoogleLogin = async () => {
     setOauthErr('');
