@@ -146,18 +146,18 @@ export default function Ecommerce() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { loginWithPasskey } = useLoginWithPasskey();
   const { connectWallet } = useConnectWallet();
-  const { wallets: privyWallets } = useWallets();
+  const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
   const { createWallet } = useCreateWallet();
 
   const hasEmbeddedWallet = privyWallets.some((w) => w.walletClientType === 'privy');
 
   useEffect(() => {
-    if (privyAuthenticated && privyWallets.length === 0) {
+    if (privyAuthenticated && privyWalletsReady && privyWallets.length === 0) {
       createWallet().catch((e) => console.error('createWallet failed:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [privyAuthenticated, privyWallets.length]);
+  }, [privyAuthenticated, privyWalletsReady, privyWallets.length]);
 
   useEffect(() => {
     if (privyWallets.length > 0) {
