@@ -146,7 +146,7 @@ export default function Ecommerce() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { loginWithPasskey } = useLoginWithPasskey();
   const { connectWallet } = useConnectWallet();
-  const { wallets: privyWallets } = useWallets();
+  const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
   const { address, isConnected } = useAccount();
 
@@ -160,8 +160,29 @@ export default function Ecommerce() {
   }, [privyReady, privyAuthenticated]);
 
   useEffect(() => {
-    console.log(`[${new Date().toLocaleTimeString()}] privyWallets.length=${privyWallets.length} embeddedWallet=${embeddedWallet ? embeddedWallet.address : 'none'}`);
-  }, [privyWallets, embeddedWallet]);
+    console.log(`[${new Date().toLocaleTimeString()}] privyWallets.length=${privyWallets.length} privyWalletsReady=${privyWalletsReady} embeddedWallet=${embeddedWallet ? embeddedWallet.address : 'none'}`);
+  }, [privyWallets, privyWalletsReady, embeddedWallet]);
+
+  // Data-confirmed fallback: sometimes authentication succeeds but Privy's wallet
+  // list gets stuck empty (seen directly in console logs) instead of loading the
+  // wallet that already exists. If that happens, force exactly one clean reload
+  // to re-hydrate properly — guarded so it can never loop.
+  useEffect(() => {
+    if (privyAuthenticated && privyWalletsReady && privyWallets.length === 0) {
+      const alreadyTried = sessionStorage.getItem('openspace_wallet_reload_attempted');
+      if (!alreadyTried) {
+        sessionStorage.setItem('openspace_wallet_reload_attempted', 'true');
+        const t = setTimeout(() => {
+          console.log('Wallets stuck empty after auth — forcing one reload to recover.');
+          window.location.reload();
+        }, 2000);
+        return () => clearTimeout(t);
+      }
+    }
+    if (privyWallets.length > 0) {
+      sessionStorage.removeItem('openspace_wallet_reload_attempted');
+    }
+  }, [privyAuthenticated, privyWalletsReady, privyWallets.length]);
 
   useEffect(() => {
     console.log(`[${new Date().toLocaleTimeString()}] wagmi isConnected=${isConnected} address=${address ?? 'none'}`);
