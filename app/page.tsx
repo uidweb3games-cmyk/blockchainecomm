@@ -835,7 +835,7 @@ export default function Ecommerce() {
                           </div>
                         ) : (
                           <button onClick={() => { setMenuOpen(false); openWalletChoice(); }} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
-                            Connect Wallet
+                            Login
                           </button>
                         )}
                       </div>
