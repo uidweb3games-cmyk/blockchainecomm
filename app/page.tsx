@@ -283,6 +283,16 @@ export default function Ecommerce() {
   const { writeContract, isPending, data: txHash } = useWriteContract();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
   const { data: myBnbBalance } = useBalance({ address, query: { enabled: !!address } });
+  const { data: myUsdcBalance } = useReadContract({
+    address: USDC_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
+  const { data: myUsdtBalance } = useReadContract({
+    address: USDT_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
 
   const sellerProfileKey = (addr: string) => `seller_profile_${MARKETPLACE_ADDRESS}_${addr.toLowerCase()}`;
 
@@ -1146,10 +1156,21 @@ export default function Ecommerce() {
 
               <div>
                 <label className={`text-xs ${subtleText} block mb-1`}>Balance</label>
-                <div className={`px-3 py-3 ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} rounded-xl text-sm font-mono`}>
-                  {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading...'}
+                <div className={`px-3 py-3 ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} rounded-xl text-sm font-mono space-y-1`}>
+                  <div className="flex justify-between">
+                    <span>tBNB</span>
+                    <span>{myBnbBalance ? Number(formatEther(myBnbBalance.value)).toFixed(4) : 'Loading...'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>USDC</span>
+                    <span>{myUsdcBalance !== undefined ? (Number(myUsdcBalance) / 1e18).toFixed(4) : 'Loading...'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>USDT</span>
+                    <span>{myUsdtBalance !== undefined ? (Number(myUsdtBalance) / 1e18).toFixed(4) : 'Loading...'}</span>
+                  </div>
                 </div>
-                <p className={`text-[11px] ${subtleText} mt-1`}>Need funds? Get free test tBNB at testnet.bnbchain.org/faucet-smart</p>
+                <p className={`text-[11px] ${subtleText} mt-1`}>Need funds? Get free test tBNB (and USDC/USDT) at testnet.bnbchain.org/faucet-smart</p>
               </div>
 
               <div className={`border-t ${cardBorder} pt-4`}>
