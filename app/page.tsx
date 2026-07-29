@@ -833,8 +833,10 @@ export default function Ecommerce() {
                             >
                               {addressCopied ? '✓ Copied full address!' : `${address?.slice(0, 6)}...${address?.slice(-4)} (tap to copy)`}
                             </button>
-                            <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText}`}>
-                              {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}
+                            <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText} space-y-0.5`}>
+                              <div>{myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}</div>
+                              <div>{myUsdcBalance !== undefined ? `${(Number(myUsdcBalance) / 1e18).toFixed(2)} USDC` : ''}</div>
+                              <div>{myUsdtBalance !== undefined ? `${(Number(myUsdtBalance) / 1e18).toFixed(2)} USDT` : ''}</div>
                             </div>
                             {loginIdentity && (
                               <div className={`px-3 pb-1 text-center text-[11px] ${subtleText} truncate`}>
