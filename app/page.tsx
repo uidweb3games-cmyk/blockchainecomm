@@ -142,6 +142,7 @@ export default function Ecommerce() {
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
+  const loginIdentity = privyUser?.google?.email || privyUser?.email?.address || (privyUser?.twitter?.username ? `@${privyUser.twitter.username}` : null);
   const { initOAuth } = useLoginWithOAuth();
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { loginWithPasskey } = useLoginWithPasskey();
@@ -825,6 +826,11 @@ export default function Ecommerce() {
                             <div className={`px-3 py-1.5 text-center text-[11px] ${subtleText}`}>
                               {myBnbBalance ? `${Number(formatEther(myBnbBalance.value)).toFixed(4)} tBNB` : 'Loading balance...'}
                             </div>
+                            {loginIdentity && (
+                              <div className={`px-3 pb-1 text-center text-[11px] ${subtleText} truncate`}>
+                                {loginIdentity}
+                              </div>
+                            )}
                             <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               📦 My Purchases {myPurchases.filter((i) => !i.released && !i.cancelled).length > 0 ? `(${myPurchases.filter((i) => !i.released && !i.cancelled).length})` : ''}
                             </button>
