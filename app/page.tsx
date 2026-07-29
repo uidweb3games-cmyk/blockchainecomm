@@ -16,15 +16,27 @@ const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
 
-const CATEGORIES = ['Electronics', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
+const CATEGORIES = ['Electronics', 'Gadget', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
 const CATEGORY_ICONS: Record<string, string> = {
   'Electronics': '📱',
+  'Gadget': '⌚',
   'Clothing': '👕',
   'Shoes': '👟',
   'Home & Furniture': '🛋️',
   'Beauty & Health': '💄',
   'Toys & Games': '🎮',
   'Other': '🏷️',
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'Electronics': 'from-indigo-400 to-blue-500',
+  'Gadget': 'from-cyan-400 to-sky-500',
+  'Clothing': 'from-emerald-400 to-green-500',
+  'Shoes': 'from-violet-400 to-purple-500',
+  'Home & Furniture': 'from-amber-400 to-orange-500',
+  'Beauty & Health': 'from-rose-400 to-pink-500',
+  'Toys & Games': 'from-fuchsia-400 to-purple-600',
+  'Other': 'from-slate-400 to-zinc-500',
 };
 
 const LIST_CURRENCIES: Record<string, { label: string; address: string; symbol: string }> = {
@@ -111,6 +123,7 @@ export default function Ecommerce() {
   const [itemCurrency, setItemCurrency] = useState('BNB');
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
+  const [categoryDrawerOpen, setCategoryDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<number[]>([]);
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
@@ -946,25 +959,39 @@ export default function Ecommerce() {
               </h2>
             </div>
 
-            <div className="flex gap-4 sm:gap-6">
-              <div className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20">
-                <button onClick={() => setViewCategory(ALL_CATEGORIES)} className="flex flex-col items-center gap-1">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg ${viewCategory === ALL_CATEGORIES ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
-                    🗂️
-                  </div>
-                  <span className={`text-[10px] font-medium ${viewCategory === ALL_CATEGORIES ? text : subtleText}`}>All</span>
-                </button>
-                {CATEGORIES.map((c) => (
-                  <button key={c} onClick={() => setViewCategory(c)} className="flex flex-col items-center gap-1">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg ${viewCategory === c ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
-                      {CATEGORY_ICONS[c]}
-                    </div>
-                    <span className={`text-[10px] font-medium text-center leading-tight ${viewCategory === c ? text : subtleText}`}>{c}</span>
-                  </button>
-                ))}
-              </div>
+            <div>
+              <button onClick={() => setCategoryDrawerOpen((v) => !v)} className="flex items-center gap-3 mb-4">
+                <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-2xl sm:text-3xl shadow-lg transition-transform ${categoryDrawerOpen ? 'scale-105' : ''} bg-gradient-to-br ${viewCategory === ALL_CATEGORIES ? 'from-lime-400 to-sky-500' : (CATEGORY_COLORS[viewCategory] ?? 'from-lime-400 to-sky-500')}`}>
+                  {viewCategory === ALL_CATEGORIES ? '🗂️' : CATEGORY_ICONS[viewCategory]}
+                </div>
+                <div className="text-left">
+                  <p className="font-bold text-base sm:text-lg leading-tight">{viewCategory === ALL_CATEGORIES ? 'All Categories' : viewCategory}</p>
+                  <p className={`text-xs ${subtleText}`}>{categoryDrawerOpen ? 'Tap to close' : 'Tap to browse categories'}</p>
+                </div>
+              </button>
 
-              <div className="flex-1 min-w-0">
+              {categoryDrawerOpen && (
+                <div className="mb-6 -mx-1 px-1 overflow-x-auto">
+                  <div className="flex gap-4 pb-2 w-max">
+                    <button onClick={() => { setViewCategory(ALL_CATEGORIES); setCategoryDrawerOpen(false); }} className="flex flex-col items-center gap-1.5 shrink-0 w-16">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl shadow-md transition-transform hover:scale-105 ${viewCategory === ALL_CATEGORIES ? 'bg-gradient-to-br from-lime-400 to-sky-500 ring-4 ring-lime-400/30' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
+                        🗂️
+                      </div>
+                      <span className={`text-[11px] font-semibold ${viewCategory === ALL_CATEGORIES ? text : subtleText}`}>All</span>
+                    </button>
+                    {CATEGORIES.map((c) => (
+                      <button key={c} onClick={() => { setViewCategory(c); setCategoryDrawerOpen(false); }} className="flex flex-col items-center gap-1.5 shrink-0 w-16">
+                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl shadow-md transition-transform hover:scale-105 ${viewCategory === c ? `bg-gradient-to-br ${CATEGORY_COLORS[c]} ring-4 ring-lime-400/30` : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>
+                          {CATEGORY_ICONS[c]}
+                        </div>
+                        <span className={`text-[11px] font-semibold text-center leading-tight ${viewCategory === c ? text : subtleText}`}>{c}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="min-w-0">
                 {count === 0 ? (
                   <p className={subtleText}>No items listed yet.</p>
                 ) : shopItems.length === 0 ? (
