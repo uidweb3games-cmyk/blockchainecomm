@@ -154,7 +154,7 @@ export default function Ecommerce() {
 
   useEffect(() => {
     if (privyAuthenticated && privyWallets.length === 0) {
-      createWallet().catch(() => {});
+      createWallet().catch((e) => console.error('createWallet failed:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [privyAuthenticated, privyWallets.length]);
@@ -163,7 +163,7 @@ export default function Ecommerce() {
     if (privyWallets.length > 0) {
       const embeddedWallet = privyWallets.find((w) => w.walletClientType === 'privy');
       const walletToActivate = embeddedWallet ?? privyWallets[0];
-      setActiveWallet(walletToActivate).catch(() => {});
+      setActiveWallet(walletToActivate).catch((e) => console.error('setActiveWallet failed:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [privyWallets]);
@@ -291,11 +291,26 @@ export default function Ecommerce() {
     try {
       await privyLogout();
     } catch (e) {
-      // ignore - we're reloading regardless, which clears any stuck state
+      // ignore - we clear storage manually below regardless
     }
     disconnect();
-    // A full reload wipes all in-memory Privy/wagmi state, preventing the
-    // "already logged in" issue that can happen if a session gets stuck.
+    try {
+      Object.keys(localStorage).forEach((key) => {
+        if (
+          key.startsWith('privy') ||
+          key.startsWith('wagmi') ||
+          key.startsWith('@appkit') ||
+          key.startsWith('wc@2') ||
+          key.startsWith('base-acc-sdk')
+        ) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {
+      // ignore
+    }
+    // A full reload after clearing storage guarantees no stale session survives —
+    // this is the automated version of the manual "clear storage" fix that worked.
     window.location.href = '/';
   };
 
