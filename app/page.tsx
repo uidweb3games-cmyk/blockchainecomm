@@ -753,15 +753,8 @@ export default function Ecommerce() {
 
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative">
-              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 7h-3a5 5 0 0 0-5 5 5 5 0 0 0-5-5H3"></path>
-                  <path d="M21 7v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7"></path>
-                  <path d="M7 12v5"></path>
-                  <path d="M17 12v5"></path>
-                  <path d="M3 3l3 4"></path>
-                  <path d="M21 3l-3 4"></path>
-                </svg>
+              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
+                💱
               </button>
               {currencyMenuOpen && (
                 <>
@@ -781,24 +774,16 @@ export default function Ecommerce() {
               )}
             </div>
 
-            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="9" cy="21" r="1.5"></circle>
-                <circle cx="18" cy="21" r="1.5"></circle>
-                <path d="M2.5 3h2l2.6 12.6a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21 8H6"></path>
-              </svg>
+            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-sky-400/30">
+              🛍️
               {cart.length > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>
               )}
             </button>
 
             <div className="relative">
-              <button onClick={() => setMenuOpen((v) => !v)} className={`w-10 h-10 rounded-full ${darkMode ? 'bg-white/10' : 'bg-zinc-900'} flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm`}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="4" y1="7" x2="20" y2="7"></line>
-                  <line x1="4" y1="12" x2="20" y2="12"></line>
-                  <line x1="4" y1="17" x2="20" y2="17"></line>
-                </svg>
+              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-600 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-purple-500/30">
+                ☰
               </button>
               {menuOpen && (
                 <>
