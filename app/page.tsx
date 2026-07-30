@@ -828,7 +828,7 @@ export default function Ecommerce() {
             </button>
 
             <div className="relative">
-              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-600 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-purple-500/30">
+              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
                 ☰
               </button>
               {menuOpen && (
