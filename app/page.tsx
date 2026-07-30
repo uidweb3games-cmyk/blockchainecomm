@@ -153,6 +153,7 @@ export default function Ecommerce() {
   const [oauthErr, setOauthErr] = useState('');
   const [addressCopied, setAddressCopied] = useState(false);
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
+  const [walletSetupTimedOut, setWalletSetupTimedOut] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
   const loginIdentity = privyUser?.google?.email || privyUser?.email?.address || (privyUser?.twitter?.username ? `@${privyUser.twitter.username}` : null);
@@ -203,6 +204,17 @@ export default function Ecommerce() {
   useEffect(() => {
     console.log(`[${new Date().toLocaleTimeString()}] wagmi isConnected=${isConnected} address=${address ?? 'none'}`);
   }, [isConnected, address]);
+
+  // Stop showing the spinner forever - after 15 seconds, switch the banner to a
+  // message that lets the user dismiss it or try again, instead of hanging silently.
+  useEffect(() => {
+    if (privyAuthenticated && !isConnected) {
+      const t = setTimeout(() => setWalletSetupTimedOut(true), 15000);
+      return () => clearTimeout(t);
+    } else {
+      setWalletSetupTimedOut(false);
+    }
+  }, [privyAuthenticated, isConnected]);
 
   // Official Privy pattern: just sync whichever wallet exists into wagmi.
   // Wallet creation itself is handled entirely by createOnLogin in layout.tsx —
@@ -757,10 +769,16 @@ export default function Ecommerce() {
   return (
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
-        {privyAuthenticated && !isConnected && (
+        {privyAuthenticated && !isConnected && !walletSetupTimedOut && (
           <div className="bg-sky-500 text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-2">
             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
             Finishing sign-in, setting up your wallet...
+          </div>
+        )}
+        {privyAuthenticated && !isConnected && walletSetupTimedOut && (
+          <div className="bg-amber-500 text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-2 flex-wrap text-center">
+            <span>Your wallet is taking longer than usual to set up.</span>
+            <button onClick={() => window.location.reload()} className="underline font-semibold shrink-0">Try Again</button>
           </div>
         )}
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
