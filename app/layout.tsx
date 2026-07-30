@@ -32,7 +32,9 @@ export default function RootLayout({
             defaultChain: bscTestnet,
             supportedChains: [bscTestnet],
             embeddedWallets: {
-              createOnLogin: 'users-without-wallets',
+              ethereum: {
+                createOnLogin: 'users-without-wallets',
+              },
             },
           }}
         >
