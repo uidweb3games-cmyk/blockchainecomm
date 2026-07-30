@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
-import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets } from '@privy-io/react-auth';
+import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import { parseEther, formatEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
@@ -161,6 +161,7 @@ export default function Ecommerce() {
   const { sendCode, loginWithCode } = useLoginWithEmail();
   const { loginWithPasskey } = useLoginWithPasskey();
   const { connectWallet } = useConnectWallet();
+  const { createWallet } = useCreateWallet();
   const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
   const { setActiveWallet } = useSetActiveWallet();
   const { address, isConnected } = useAccount();
@@ -227,6 +228,29 @@ export default function Ecommerce() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [embeddedWallet, privyWallets]);
+
+  // Per Privy support: automatic createOnLogin wallet creation can occasionally
+  // drop the request (network issues, etc). Their recommended fix is a manual
+  // createWallet() fallback triggered when the user needs a wallet and doesn't
+  // have one - guarded so it only fires once per session and never conflicts
+  // with a wallet that already exists.
+  useEffect(() => {
+    if (!privyReady || !privyAuthenticated || !privyWalletsReady) return;
+    if (privyWallets.length > 0) return;
+
+    const alreadyTried = sessionStorage.getItem('openspace_manual_wallet_create_attempted');
+    if (alreadyTried) return;
+    sessionStorage.setItem('openspace_manual_wallet_create_attempted', 'true');
+
+    console.log('No wallet found after auth - triggering manual createWallet() per Privy guidance.');
+    createWallet().catch((e: any) => {
+      if (e?.message?.toLowerCase().includes('already has')) {
+        console.log('Wallet already exists server-side, ignoring.');
+      } else {
+        console.error('Manual createWallet failed:', e);
+      }
+    });
+  }, [privyReady, privyAuthenticated, privyWalletsReady, privyWallets.length, createWallet]);
 
   const handleGoogleLogin = async () => {
     setOauthErr('');
@@ -769,18 +793,7 @@ export default function Ecommerce() {
   return (
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
-        {privyAuthenticated && !isConnected && !walletSetupTimedOut && (
-          <div className="bg-sky-500 text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-2">
-            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-            Finishing sign-in, setting up your wallet...
-          </div>
-        )}
-        {privyAuthenticated && !isConnected && walletSetupTimedOut && (
-          <div className="bg-amber-500 text-white text-xs font-medium py-2 px-4 flex items-center justify-center gap-2 flex-wrap text-center">
-            <span>Your wallet is taking longer than usual to set up.</span>
-            <button onClick={() => window.location.reload()} className="underline font-semibold shrink-0">Try Again</button>
-          </div>
-        )}
+        
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
           <OpenSpaceLogo className="h-12 sm:h-16 w-auto shrink-0" />
 
