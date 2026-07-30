@@ -183,18 +183,20 @@ export default function Ecommerce() {
   // to re-hydrate properly — guarded so it can never loop.
   useEffect(() => {
     if (privyAuthenticated && privyWalletsReady && privyWallets.length === 0) {
-      const alreadyTried = sessionStorage.getItem('openspace_wallet_reload_attempted');
-      if (!alreadyTried) {
-        sessionStorage.setItem('openspace_wallet_reload_attempted', 'true');
+      const attempts = Number(sessionStorage.getItem('openspace_wallet_reload_attempts') || '0');
+      if (attempts < 3) {
         const t = setTimeout(() => {
-          console.log('Wallets stuck empty after auth — forcing one reload to recover.');
+          console.log(`Wallets stuck empty after auth — reload attempt ${attempts + 1} of 3.`);
+          sessionStorage.setItem('openspace_wallet_reload_attempts', String(attempts + 1));
           window.location.reload();
-        }, 2000);
+        }, 3000 + attempts * 2000);
         return () => clearTimeout(t);
+      } else {
+        console.log('Wallet still not syncing after 3 reload attempts — giving up automatic recovery.');
       }
     }
     if (privyWallets.length > 0) {
-      sessionStorage.removeItem('openspace_wallet_reload_attempted');
+      sessionStorage.removeItem('openspace_wallet_reload_attempts');
     }
   }, [privyAuthenticated, privyWalletsReady, privyWallets.length]);
 
