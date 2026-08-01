@@ -139,7 +139,8 @@ export default function Ecommerce() {
   const [shopNameInput, setShopNameInput] = useState('');
   const [shopBioInput, setShopBioInput] = useState('');
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
-  const [quickViewZoom, setQuickViewZoom] = useState(1);
+  const [zoomActive, setZoomActive] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -387,7 +388,8 @@ export default function Ecommerce() {
   };
 
   useEffect(() => {
-    setQuickViewZoom(1);
+    setZoomActive(false);
+    setZoomOrigin({ x: 50, y: 50 });
     setPickedColor('');
     setPickedSize('');
   }, [quickViewId]);
@@ -1188,15 +1190,38 @@ export default function Ecommerce() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setQuickViewId(null)}>
           <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} overflow-hidden max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
             <div
-              className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden touch-none`}
-              onWheel={(e) => { e.preventDefault(); setQuickViewZoom((z) => Math.min(Math.max(z - e.deltaY * 0.001, 1), 3)); }}
-              onDoubleClick={() => setQuickViewZoom((z) => (z > 1 ? 1 : 2))}
+              className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
+              onMouseMove={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                setZoomOrigin({ x, y });
+                setZoomActive(true);
+              }}
+              onMouseLeave={() => setZoomActive(false)}
+              onTouchStart={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                setZoomOrigin({ x, y });
+                setZoomActive(true);
+              }}
+              onTouchMove={(e) => {
+                e.preventDefault();
+                const rect = e.currentTarget.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                setZoomOrigin({ x, y });
+              }}
+              onTouchEnd={() => setZoomActive(false)}
             >
               <img
                 src={getQvDisplayImage()}
                 alt={quickViewListing.name}
-                className="w-full h-full object-cover transition-transform duration-150 cursor-zoom-in"
-                style={{ transform: `scale(${quickViewZoom})` }}
+                className={`w-full h-full object-cover ${zoomActive ? 'scale-[2.4]' : 'scale-100'} transition-transform duration-100 ease-out cursor-zoom-in`}
+                style={{ transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` }}
                 onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
               />
               <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
