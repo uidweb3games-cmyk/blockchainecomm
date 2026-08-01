@@ -18,6 +18,6 @@ export const config = createConfig({
     }),
   ],
   transports: {
-    [bscTestnet.id]: http('https://bsc-testnet-rpc.publicnode.com'),
+    [bscTestnet.id]: http('https://bsc-testnet.core.chainstack.com/a151707dd68c361a25a121381560ca61'),
   },
 });
