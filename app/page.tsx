@@ -222,12 +222,18 @@ export default function Ecommerce() {
   // manually calling createWallet() here was fighting with that and causing
   // "User already has an embedded wallet" errors that broke the login flow.
   useEffect(() => {
-    const walletToActivate = embeddedWallet ?? privyWallets[0];
-    if (walletToActivate) {
-      setActiveWallet(walletToActivate).catch((e) => console.error('setActiveWallet failed:', e));
+    // Only auto-activate the embedded wallet on mount - it's not a browser
+    // extension, so no permission prompt is involved. External wallets (like
+    // MetaMask) are intentionally left out here: Privy's WagmiProvider disables
+    // wagmi's silent reconnectOnMount, so auto-activating an external wallet on
+    // every load acts like a fresh connection request and triggers a real
+    // MetaMask popup each time. Users with an external wallet reconnect via the
+    // existing "Connect Existing Wallet" button instead.
+    if (embeddedWallet) {
+      setActiveWallet(embeddedWallet).catch((e) => console.error('setActiveWallet failed:', e));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embeddedWallet, privyWallets]);
+  }, [embeddedWallet]);
 
   // Per Privy support: automatic createOnLogin wallet creation can occasionally
   // drop the request (network issues, etc). Their recommended fix is a manual
