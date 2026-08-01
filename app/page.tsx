@@ -42,7 +42,7 @@ const emptyShipping: ShippingInfo = { fullName: '', address: '', city: '', count
 type Listing = {
   id: number; name: string; imageUrl: string; category: string; price: bigint;
   seller: string; paymentToken: string; delisted: boolean; hasVariants: boolean;
-  colors: string[]; sizes: string[]; simpleStock: bigint;
+  colors: string[]; sizes: string[]; simpleStock: bigint; isFeaturedNow: boolean;
 };
 
 type Order = {
@@ -120,6 +120,15 @@ export default function Ecommerce() {
   const [editPrice, setEditPrice] = useState('');
   const [editStock, setEditStock] = useState('');
   const [editVariantStock, setEditVariantStock] = useState<Record<string, string>>({});
+  const [selectedFeaturedIds, setSelectedFeaturedIds] = useState<number[]>([]);
+  const [featuredPickerInitialized, setFeaturedPickerInitialized] = useState(false);
+  const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
+  const [newListingFee, setNewListingFee] = useState('');
+  const [newAdFee, setNewAdFee] = useState('');
+  const [newAdDurationDays, setNewAdDurationDays] = useState('');
+  const [modListingId, setModListingId] = useState('');
+  const [modReason, setModReason] = useState('');
+  const [modFeaturedListingId, setModFeaturedListingId] = useState('');
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
@@ -300,6 +309,14 @@ export default function Ecommerce() {
   const { data: buyerFeePercent } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'buyerFeePercent' });
   const { data: listingFeeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingFee' });
   const listingFeeWei = listingFeeData ?? BigInt(0);
+  const { data: adSubscriptionFeeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'adSubscriptionFee' });
+  const adSubscriptionFeeWei = adSubscriptionFeeData ?? BigInt(0);
+  const { data: adSubscriptionDurationData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'adSubscriptionDuration' });
+  const adSubscriptionDurationSeconds = adSubscriptionDurationData ? Number(adSubscriptionDurationData) : 0;
+  const { data: mySubscriptionExpiryData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'adSubscriptionExpiry', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const mySubscriptionExpiry = mySubscriptionExpiryData ? Number(mySubscriptionExpiryData) : 0;
+  const mySubscriptionActive = mySubscriptionExpiry * 1000 > Date.now();
+  const { data: myFeaturedListingsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getSellerFeaturedListings', args: address ? [address] : undefined, query: { enabled: !!address } });
 
   const lCount = listingCount ? Number(listingCount) : 0;
   const oCount = orderCount ? Number(orderCount) : 0;
@@ -308,11 +325,13 @@ export default function Ecommerce() {
   const listingContracts = Array.from({ length: lCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getListing' as const, args: [BigInt(i + 1)] as const }));
   const variantContracts = Array.from({ length: lCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getListingVariants' as const, args: [BigInt(i + 1)] as const }));
   const stockContracts = Array.from({ length: lCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getAvailableStock' as const, args: [BigInt(i + 1), NO_VARIANT, NO_VARIANT] as const }));
+  const featuredFlagContracts = Array.from({ length: lCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'isFeatured' as const, args: [BigInt(i + 1)] as const }));
   const orderContracts = Array.from({ length: oCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getOrder' as const, args: [BigInt(i + 1)] as const }));
 
   const { data: listingsData } = useReadContracts({ contracts: listingContracts, query: { enabled: lCount > 0 } });
   const { data: variantsData } = useReadContracts({ contracts: variantContracts, query: { enabled: lCount > 0 } });
   const { data: stockData } = useReadContracts({ contracts: stockContracts, query: { enabled: lCount > 0 } });
+  const { data: featuredFlagData } = useReadContracts({ contracts: featuredFlagContracts, query: { enabled: lCount > 0 } });
   const { data: ordersData } = useReadContracts({ contracts: orderContracts, query: { enabled: oCount > 0 } });
 
   const isAdmin = address && adminAddress && address.toLowerCase() === (adminAddress as string).toLowerCase();
@@ -336,7 +355,9 @@ export default function Ecommerce() {
       const [colors, sizes] = variantResult.status === 'success' && variantResult.result ? (variantResult.result as [string[], string[]]) : [[], []];
       const stockResult = stockData[index];
       const simpleStock = stockResult.status === 'success' && stockResult.result !== undefined ? (stockResult.result as bigint) : BigInt(0);
-      return { id: index + 1, name, imageUrl, category, price, seller, paymentToken, delisted, hasVariants, colors, sizes, simpleStock };
+      const featuredResult = featuredFlagData ? featuredFlagData[index] : undefined;
+      const isFeaturedNow = featuredResult && featuredResult.status === 'success' ? Boolean(featuredResult.result) : false;
+      return { id: index + 1, name, imageUrl, category, price, seller, paymentToken, delisted, hasVariants, colors, sizes, simpleStock, isFeaturedNow };
     }).filter((x): x is Listing => x !== null);
   })();
 
@@ -480,6 +501,62 @@ export default function Ecommerce() {
     setEditingListingId(null);
   };
 
+  // ---------- ADS: SUBSCRIPTION + FEATURED PICKER ----------
+  const handleSubscribeToAds = () => {
+    call('subscribeToAds', [], adSubscriptionFeeWei);
+  };
+
+  useEffect(() => {
+    if (!featuredPickerInitialized && myFeaturedListingsData) {
+      setSelectedFeaturedIds((myFeaturedListingsData as bigint[]).map((id) => Number(id)));
+      setFeaturedPickerInitialized(true);
+    }
+  }, [myFeaturedListingsData, featuredPickerInitialized]);
+
+  const toggleFeaturedSelection = (listingId: number) => {
+    setSelectedFeaturedIds((prev) => {
+      if (prev.includes(listingId)) return prev.filter((id) => id !== listingId);
+      if (prev.length >= 5) { alert('You can feature up to 5 items at a time.'); return prev; }
+      return [...prev, listingId];
+    });
+  };
+
+  const saveFeaturedSelection = () => {
+    call('setFeaturedListings', [selectedFeaturedIds.map((id) => BigInt(id))]);
+  };
+
+  // ---------- ADMIN ----------
+  const openAdminSettings = () => {
+    setNewListingFee(formatEther(listingFeeWei));
+    setNewAdFee(formatEther(adSubscriptionFeeWei));
+    setNewAdDurationDays(adSubscriptionDurationSeconds ? String(Math.round(adSubscriptionDurationSeconds / 86400)) : '');
+    setAdminSettingsOpen(true);
+  };
+
+  const saveAdminSettings = () => {
+    if (newListingFee && Number(newListingFee) >= 0) {
+      call('setListingFee', [parseEther(newListingFee)]);
+    }
+    if (newAdFee && Number(newAdFee) >= 0) {
+      call('setAdSubscriptionFee', [parseEther(newAdFee)]);
+    }
+    if (newAdDurationDays && Number(newAdDurationDays) > 0) {
+      call('setAdSubscriptionDuration', [BigInt(Number(newAdDurationDays) * 86400)]);
+    }
+  };
+
+  const handleAdminDelist = () => {
+    if (!modListingId || !modReason.trim()) { alert('Please enter a listing ID and a reason'); return; }
+    call('adminDelistItem', [BigInt(modListingId), modReason.trim()]);
+    setModListingId(''); setModReason('');
+  };
+
+  const handleAdminRemoveFeatured = () => {
+    if (!modFeaturedListingId) { alert('Please enter a listing ID'); return; }
+    call('adminRemoveFromFeatured', [BigInt(modFeaturedListingId)]);
+    setModFeaturedListingId('');
+  };
+
   // ---------- CART ----------
   const addToCart = (listing: Listing, color: string, size: string) => {
     if (cartCurrency && cartCurrency.toLowerCase() !== listing.paymentToken.toLowerCase()) {
@@ -573,7 +650,7 @@ export default function Ecommerce() {
     return true;
   });
 
-  const adListings = allListings.filter((l) => !l.delisted);
+  const adListings = allListings.filter((l) => !l.delisted && l.isFeaturedNow);
   const adStrip = adListings.length > 0 ? [...adListings, ...adListings] : [];
 
   const myListings = isConnected ? allListings.filter((l) => l.seller.toLowerCase() === address?.toLowerCase() && !l.delisted) : [];
@@ -779,6 +856,7 @@ export default function Ecommerce() {
                         <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>❓ How to Test</button>
                         {isConnected && disputeEligible.length > 0 && (<button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚠ Open Dispute</button>)}
                         {isAdmin && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
+                        {isAdmin && (<button onClick={() => { openAdminSettings(); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Admin Settings</button>)}
                       </div>
                       <div className={`border-t ${cardBorder} mt-2 pt-2`}>
                         {isConnected ? (
@@ -1032,6 +1110,47 @@ export default function Ecommerce() {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+                {isConnected && sellerProfile && (
+                  <div className={`mb-10 ${cardBg} rounded-3xl p-6 border ${cardBorder} max-w-lg`}>
+                    <h3 className="font-semibold text-lg mb-1">Sponsored Ads</h3>
+                    {!mySubscriptionActive ? (
+                      <>
+                        <p className={`text-sm ${subtleText} mb-4`}>Subscribe to feature up to 5 of your items in the Sponsored strip at the top of the shop for {adSubscriptionDurationSeconds ? Math.round(adSubscriptionDurationSeconds / 86400) : '...'} days.</p>
+                        <button onClick={handleSubscribeToAds} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+                          {isPending ? 'Confirm in wallet...' : `Subscribe for ${formatEther(adSubscriptionFeeWei)} tBNB`}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <p className={`text-sm ${subtleText} mb-4`}>
+                          Your ad subscription is active until {new Date(mySubscriptionExpiry * 1000).toLocaleDateString()}. Pick up to 5 of your items to feature — you can change this selection anytime while subscribed.
+                        </p>
+                        {myListings.length === 0 ? (
+                          <p className={`text-sm ${subtleText} mb-4`}>List an item first to feature it.</p>
+                        ) : (
+                          <div className="space-y-2 mb-4 max-h-64 overflow-y-auto pr-1">
+                            {myListings.map((listing) => {
+                              const checked = selectedFeaturedIds.includes(listing.id);
+                              return (
+                                <label key={listing.id} className={`flex items-center gap-3 p-2 rounded-xl border ${cardBorder} cursor-pointer ${checked ? 'bg-lime-400/10 border-lime-400/40' : ''}`}>
+                                  <input type="checkbox" checked={checked} onChange={() => toggleFeaturedSelection(listing.id)} className="shrink-0" />
+                                  <span className="text-sm truncate">{listing.name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <button onClick={saveFeaturedSelection} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+                          {isPending ? 'Confirm in wallet...' : 'Save Featured Selection'}
+                        </button>
+                        <button onClick={handleSubscribeToAds} disabled={isPending} className={`w-full mt-2 py-2 text-xs font-medium transition-colors border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                          Extend subscription (+{adSubscriptionDurationSeconds ? Math.round(adSubscriptionDurationSeconds / 86400) : '...'} days for {formatEther(adSubscriptionFeeWei)} tBNB)
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -1416,6 +1535,43 @@ export default function Ecommerce() {
               })}
             </div>
             <button onClick={() => setResolveCenterOpen(false)} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>Close</button>
+          </div>
+        </div>
+      )}
+
+      {adminSettingsOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setAdminSettingsOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Admin Settings</h3>
+              <button onClick={() => setAdminSettingsOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Listing Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newListingFee} onChange={(e) => setNewListingFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newAdFee} onChange={(e) => setNewAdFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Duration (days)</label><input type="number" step="1" min="1" value={newAdDurationDays} onChange={(e) => setNewAdDurationDays(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <button onClick={saveAdminSettings} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Fee Settings'}</button>
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4 mb-4`}>
+              <h4 className="font-semibold text-sm mb-1">Force-Remove a Listing</h4>
+              <p className={`text-xs ${subtleText} mb-3`}>For prohibited or non-compliant items. Overrides the seller — cannot be undone.</p>
+              <div className="space-y-2">
+                <input type="number" placeholder="Listing ID" value={modListingId} onChange={(e) => setModListingId(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                <input type="text" placeholder="Reason (recorded on-chain)" value={modReason} onChange={(e) => setModReason(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                <button onClick={handleAdminDelist} disabled={isPending} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Force Delist'}</button>
+              </div>
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4`}>
+              <h4 className="font-semibold text-sm mb-1">Remove From Sponsored Strip</h4>
+              <p className={`text-xs ${subtleText} mb-3`}>Pulls one item out of ads without cancelling the seller's whole subscription.</p>
+              <div className="space-y-2">
+                <input type="number" placeholder="Listing ID" value={modFeaturedListingId} onChange={(e) => setModFeaturedListingId(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                <button onClick={handleAdminRemoveFeatured} disabled={isPending} className={`w-full py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} disabled:opacity-50`}>{isPending ? 'Confirm in wallet...' : 'Remove From Ads'}</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
