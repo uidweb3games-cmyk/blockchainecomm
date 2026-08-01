@@ -796,6 +796,10 @@ export default function Ecommerce() {
 
   const quickViewItem = quickViewId ? allItems.find((i) => i.id === quickViewId) ?? null : null;
 
+  useEffect(() => {
+    setQuickViewZoom(1);
+  }, [quickViewId]);
+
   return (
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
@@ -1282,11 +1286,19 @@ export default function Ecommerce() {
       {quickViewItem && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setQuickViewId(null)}>
           <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} overflow-hidden max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-            <div className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative`}>
+            <div
+              className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden touch-none`}
+              onWheel={(e) => {
+                e.preventDefault();
+                setQuickViewZoom((z) => Math.min(Math.max(z - e.deltaY * 0.001, 1), 3));
+              }}
+              onDoubleClick={() => setQuickViewZoom((z) => (z > 1 ? 1 : 2))}
+            >
               <img
                 src={quickViewItem.imageUrl && quickViewItem.imageUrl.trim() !== '' ? quickViewItem.imageUrl : FALLBACK_IMAGE}
                 alt={quickViewItem.name}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-150 cursor-zoom-in"
+                style={{ transform: `scale(${quickViewZoom})` }}
                 onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
               />
               <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
