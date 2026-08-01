@@ -142,6 +142,7 @@ export default function Ecommerce() {
   const [shopBioInput, setShopBioInput] = useState('');
   const [editingSellerProfile, setEditingSellerProfile] = useState(false);
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
+     const [quickViewZoom, setQuickViewZoom] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
