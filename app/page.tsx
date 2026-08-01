@@ -340,6 +340,30 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
+  const quickViewListing = quickViewId ? getListingById(quickViewId) ?? null : null;
+
+  const qvVariantContracts = quickViewListing && quickViewListing.hasVariants
+    ? quickViewListing.colors.flatMap((c) => quickViewListing.sizes.map((s) => ({
+        address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getAvailableStock' as const, args: [BigInt(quickViewListing.id), c, s] as const,
+      })))
+    : [];
+  const { data: qvStockData } = useReadContracts({ contracts: qvVariantContracts, query: { enabled: qvVariantContracts.length > 0 } });
+
+  const getQvStock = (color: string, size: string): number => {
+    if (!quickViewListing || !quickViewListing.hasVariants || !qvStockData) return 0;
+    const ci = quickViewListing.colors.indexOf(color);
+    const si = quickViewListing.sizes.indexOf(size);
+    const idx = ci * quickViewListing.sizes.length + si;
+    const r = qvStockData[idx];
+    return r && r.status === 'success' && r.result !== undefined ? Number(r.result) : 0;
+  };
+
+  useEffect(() => {
+    setQuickViewZoom(1);
+    setPickedColor('');
+    setPickedSize('');
+  }, [quickViewId]);
+
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
@@ -503,30 +527,6 @@ export default function Ecommerce() {
   ];
 
   const checkoutSummary = cart.length > 0 ? { subtotal: cartSubtotal, fee: cartTotal - cartSubtotal, total: cartTotal, symbol: cartCurrency ? currencySymbol(cartCurrency) : '' } : null;
-
-  const quickViewListing = quickViewId ? getListingById(quickViewId) ?? null : null;
-
-  const qvVariantContracts = quickViewListing && quickViewListing.hasVariants
-    ? quickViewListing.colors.flatMap((c) => quickViewListing.sizes.map((s) => ({
-        address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getAvailableStock' as const, args: [BigInt(quickViewListing.id), c, s] as const,
-      })))
-    : [];
-  const { data: qvStockData } = useReadContracts({ contracts: qvVariantContracts, query: { enabled: qvVariantContracts.length > 0 } });
-
-  const getQvStock = (color: string, size: string): number => {
-    if (!quickViewListing || !quickViewListing.hasVariants || !qvStockData) return 0;
-    const ci = quickViewListing.colors.indexOf(color);
-    const si = quickViewListing.sizes.indexOf(size);
-    const idx = ci * quickViewListing.sizes.length + si;
-    const r = qvStockData[idx];
-    return r && r.status === 'success' && r.result !== undefined ? Number(r.result) : 0;
-  };
-
-  useEffect(() => {
-    setQuickViewZoom(1);
-    setPickedColor('');
-    setPickedSize('');
-  }, [quickViewId]);
 
   const canAddQuickViewToCart = quickViewListing && (!quickViewListing.hasVariants || (pickedColor && pickedSize && getQvStock(pickedColor, pickedSize) > 0));
 
