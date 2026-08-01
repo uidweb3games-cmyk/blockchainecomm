@@ -112,6 +112,14 @@ export default function Ecommerce() {
   const [colorsInput, setColorsInput] = useState('');
   const [sizesInput, setSizesInput] = useState('');
   const [stockMatrix, setStockMatrix] = useState<Record<string, string>>({});
+  const [colorImagesInput, setColorImagesInput] = useState<Record<string, string>>({});
+  const [editingListingId, setEditingListingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editImage, setEditImage] = useState('');
+  const [editCategory, setEditCategory] = useState(CATEGORIES[0]);
+  const [editPrice, setEditPrice] = useState('');
+  const [editStock, setEditStock] = useState('');
+  const [editVariantStock, setEditVariantStock] = useState<Record<string, string>>({});
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
@@ -289,6 +297,8 @@ export default function Ecommerce() {
   const { data: feeWalletAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'feeWallet' });
   const { data: sellerFeePercent } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'sellerFeePercent' });
   const { data: buyerFeePercent } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'buyerFeePercent' });
+  const { data: listingFeeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingFee' });
+  const listingFeeWei = listingFeeData ?? BigInt(0);
 
   const lCount = listingCount ? Number(listingCount) : 0;
   const oCount = orderCount ? Number(orderCount) : 0;
@@ -349,6 +359,24 @@ export default function Ecommerce() {
     : [];
   const { data: qvStockData } = useReadContracts({ contracts: qvVariantContracts, query: { enabled: qvVariantContracts.length > 0 } });
 
+  const qvColorImageContracts = quickViewListing && quickViewListing.hasVariants
+    ? quickViewListing.colors.map((c) => ({
+        address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getColorImage' as const, args: [BigInt(quickViewListing.id), c] as const,
+      }))
+    : [];
+  const { data: qvColorImageData } = useReadContracts({ contracts: qvColorImageContracts, query: { enabled: qvColorImageContracts.length > 0 } });
+
+  const getQvDisplayImage = (): string => {
+    if (!quickViewListing) return FALLBACK_IMAGE;
+    if (quickViewListing.hasVariants && pickedColor && qvColorImageData) {
+      const ci = quickViewListing.colors.indexOf(pickedColor);
+      const r = qvColorImageData[ci];
+      const colorImg = r && r.status === 'success' && typeof r.result === 'string' ? r.result : '';
+      if (colorImg && colorImg.trim() !== '') return colorImg;
+    }
+    return quickViewListing.imageUrl && quickViewListing.imageUrl.trim() !== '' ? quickViewListing.imageUrl : FALLBACK_IMAGE;
+  };
+
   const getQvStock = (color: string, size: string): number => {
     if (!quickViewListing || !quickViewListing.hasVariants || !qvStockData) return 0;
     const ci = quickViewListing.colors.indexOf(color);
@@ -367,7 +395,7 @@ export default function Ecommerce() {
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
-    setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setListMode('simple');
+    setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setColorImagesInput({}); setListMode('simple');
     setShowListForm(false);
   };
 
@@ -377,7 +405,7 @@ export default function Ecommerce() {
     }
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)]);
+    call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
 
@@ -395,10 +423,59 @@ export default function Ecommerce() {
         matrix.push(BigInt(val));
       }
     }
+    const colorImagesArr = parsedColors.map((c) => (colorImagesInput[c] || '').trim());
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, parsedColors, parsedSizes, matrix]);
+    call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, parsedColors, parsedSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
+  };
+
+  const openEditListing = (listing: Listing) => {
+    setEditingListingId(listing.id);
+    setEditName(listing.name);
+    setEditImage(listing.imageUrl);
+    setEditCategory(listing.category);
+    setEditPrice((Number(listing.price) / 1e18).toString());
+    setEditStock(listing.hasVariants ? '' : listing.simpleStock.toString());
+    setEditVariantStock({});
+  };
+
+  const editingListing = editingListingId ? getListingById(editingListingId) : null;
+  const editVariantStockContracts = editingListing && editingListing.hasVariants
+    ? editingListing.colors.flatMap((c) => editingListing.sizes.map((s) => ({
+        address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getAvailableStock' as const, args: [BigInt(editingListing.id), c, s] as const,
+      })))
+    : [];
+  const { data: editVariantStockData } = useReadContracts({ contracts: editVariantStockContracts, query: { enabled: editVariantStockContracts.length > 0 } });
+
+  const getEditVariantStockValue = (color: string, size: string): string => {
+    const key = `${color}|${size}`;
+    if (editVariantStock[key] !== undefined) return editVariantStock[key];
+    if (!editingListing || !editVariantStockData) return '';
+    const ci = editingListing.colors.indexOf(color);
+    const si = editingListing.sizes.indexOf(size);
+    const idx = ci * editingListing.sizes.length + si;
+    const r = editVariantStockData[idx];
+    return r && r.status === 'success' && r.result !== undefined ? String(r.result) : '';
+  };
+
+  const saveEditListing = () => {
+    if (!editingListingId) return;
+    if (!editName.trim() || !editPrice || Number(editPrice) <= 0) { alert('Please enter a valid name and price'); return; }
+    const priceInWei = parseEther(editPrice);
+    call('updateListing', [BigInt(editingListingId), editName.trim(), editImage.trim(), editCategory, priceInWei]);
+    const listing = getListingById(editingListingId);
+    if (listing && !listing.hasVariants && editStock && Number(editStock) >= 0) {
+      call('updateSimpleStock', [BigInt(editingListingId), BigInt(editStock)]);
+    }
+    if (listing && listing.hasVariants) {
+      Object.entries(editVariantStock).forEach(([key, val]) => {
+        if (val === '' || Number(val) < 0) return;
+        const [color, size] = key.split('|');
+        call('updateVariantStock', [BigInt(editingListingId), color, size, BigInt(val)]);
+      });
+    }
+    setEditingListingId(null);
   };
 
   // ---------- CART ----------
@@ -854,6 +931,10 @@ export default function Ecommerce() {
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Price (in {LIST_CURRENCIES[itemCurrency].symbol})</label><input type="number" step="0.0001" min="0" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="e.g. 0.01" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
 
+                      {listingFeeWei > BigInt(0) && (
+                        <p className={`text-xs ${subtleText}`}>A listing fee of {formatEther(listingFeeWei)} tBNB applies to publish this item.</p>
+                      )}
+
                       {listMode === 'simple' ? (
                         <>
                           <div><label className={`text-xs ${subtleText} block mb-1`}>Stock Quantity</label><input type="number" min="1" step="1" value={itemStock} onChange={(e) => setItemStock(e.target.value)} placeholder="e.g. 10" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -865,6 +946,26 @@ export default function Ecommerce() {
                         <>
                           <div><label className={`text-xs ${subtleText} block mb-1`}>Colors (comma separated)</label><input type="text" value={colorsInput} onChange={(e) => setColorsInput(e.target.value)} placeholder="e.g. Black, Grey, Navy" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
                           <div><label className={`text-xs ${subtleText} block mb-1`}>Sizes (comma separated)</label><input type="text" value={sizesInput} onChange={(e) => setSizesInput(e.target.value)} placeholder="e.g. S, M, L, XL" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+
+                          {parsedColors.length > 0 && (
+                            <div>
+                              <label className={`text-xs ${subtleText} block mb-2`}>Image URL per color (optional - falls back to the main image above)</label>
+                              <div className="space-y-2">
+                                {parsedColors.map((c) => (
+                                  <div key={c} className="flex items-center gap-2">
+                                    <span className={`text-xs ${subtleText} w-16 shrink-0`}>{c}</span>
+                                    <input
+                                      type="text"
+                                      value={colorImagesInput[c] || ''}
+                                      onChange={(e) => setColorImagesInput((prev) => ({ ...prev, [c]: e.target.value }))}
+                                      placeholder="https://..."
+                                      className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-3 py-2 text-sm outline-none focus:border-lime-400 transition-colors`}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {parsedColors.length > 0 && parsedSizes.length > 0 && (
                             <div>
@@ -920,7 +1021,10 @@ export default function Ecommerce() {
                               <h4 className="font-semibold mb-1">{listing.name}</h4>
                               <p className={`text-sm font-mono text-lime-500 mb-1`}>{(Number(listing.price) / 1e18).toString()} {currencySymbol(listing.paymentToken)}</p>
                               <p className={`text-xs ${subtleText} mb-3`}>{listing.hasVariants ? `${listing.colors.length} colors, ${listing.sizes.length} sizes` : `${listing.simpleStock.toString()} in stock`}</p>
-                              <button onClick={() => call('delistItem', [BigInt(listing.id)])} disabled={isPending} className="w-full py-2 text-red-500 hover:text-red-600 text-xs font-medium transition-colors border border-red-500/30 rounded-xl">Remove Listing</button>
+                              <div className="flex gap-2">
+                                <button onClick={() => openEditListing(listing)} className={`flex-1 py-2 text-xs font-medium transition-colors border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Edit</button>
+                                <button onClick={() => call('delistItem', [BigInt(listing.id)])} disabled={isPending} className="flex-1 py-2 text-red-500 hover:text-red-600 text-xs font-medium transition-colors border border-red-500/30 rounded-xl">Remove</button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -992,6 +1096,55 @@ export default function Ecommerce() {
         </div>
       )}
 
+      {editingListingId !== null && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setEditingListingId(null)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Edit Listing</h3>
+              <button onClick={() => setEditingListingId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+            <div className="space-y-3 mb-5">
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Item Name</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Image URL</label><input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              {editingListingId !== null && !getListingById(editingListingId)?.hasVariants && (
+                <div><label className={`text-xs ${subtleText} block mb-1`}>Stock Quantity</label><input type="number" min="0" step="1" value={editStock} onChange={(e) => setEditStock(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              )}
+              {editingListingId !== null && getListingById(editingListingId)?.hasVariants && (
+                <div>
+                  <label className={`text-xs ${subtleText} block mb-2`}>Stock per color/size</label>
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {getListingById(editingListingId)!.colors.map((c) => (
+                      <div key={c}>
+                        <p className="text-xs font-semibold mb-1">{c}</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {getListingById(editingListingId)!.sizes.map((s) => {
+                            const key = `${c}|${s}`;
+                            return (
+                              <div key={key} className="flex items-center gap-2">
+                                <span className={`text-xs ${subtleText} w-10 shrink-0`}>{s}</span>
+                                <input
+                                  type="number" min="0" step="1"
+                                  value={getEditVariantStockValue(c, s)}
+                                  onChange={(e) => setEditVariantStock((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-sm outline-none focus:border-lime-400 transition-colors`}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={saveEditListing} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Changes'}</button>
+          </div>
+        </div>
+      )}
+
       {purchasesOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setPurchasesOpen(false)}>
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
@@ -1040,7 +1193,7 @@ export default function Ecommerce() {
               onDoubleClick={() => setQuickViewZoom((z) => (z > 1 ? 1 : 2))}
             >
               <img
-                src={quickViewListing.imageUrl && quickViewListing.imageUrl.trim() !== '' ? quickViewListing.imageUrl : FALLBACK_IMAGE}
+                src={getQvDisplayImage()}
                 alt={quickViewListing.name}
                 className="w-full h-full object-cover transition-transform duration-150 cursor-zoom-in"
                 style={{ transform: `scale(${quickViewZoom})` }}
