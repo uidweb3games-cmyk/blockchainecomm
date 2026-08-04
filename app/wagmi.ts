@@ -1,107 +1,23 @@
-export const MARKETPLACE_ADDRESS = "0x8021525Be44e9558aA8811b73d161aE286211ffa" as const;
+import { createConfig } from '@privy-io/wagmi';
+import { bscTestnet } from 'wagmi/chains';
+import { http } from 'wagmi';
+import { injected, walletConnect } from 'wagmi/connectors';
 
-export const USDC_ADDRESS = "0x64544969ed7EBf5f083679233325356EbE738930" as const;
-export const USDT_ADDRESS = "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" as const;
-
-export const ERC20_ABI = [
-  {
-    "inputs": [
-      { "internalType": "address", "name": "spender", "type": "address" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "approve",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
-    "stateMutability": "nonpayable",
-    "type": "function"
+export const config = createConfig({
+  chains: [bscTestnet],
+  connectors: [
+    injected(),
+    walletConnect({
+      projectId: 'b421972c42fe553a01df73640b62eb21',
+      metadata: {
+        name: 'OpenSpace Marketplace',
+        description: 'Decentralized escrow marketplace on BNB Testnet',
+        url: 'https://openspace-ten.vercel.app',
+        icons: ['https://avatars.githubusercontent.com/u/37784886'],
+      },
+    }),
+  ],
+  transports: {
+    [bscTestnet.id]: http('https://bsc-testnet.core.chainstack.com/a151707dd68c361a25a121381560ca61'),
   },
-  {
-    "inputs": [
-      { "internalType": "address", "name": "owner", "type": "address" },
-      { "internalType": "address", "name": "spender", "type": "address" }
-    ],
-    "name": "allowance",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "address", "name": "account", "type": "address" }],
-    "name": "balanceOf",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  }
-] as const;
-
-export const MARKETPLACE_ABI = [
-  { "inputs": [], "stateMutability": "nonpayable", "type": "constructor" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "seller", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "expiresAt", "type": "uint256" }], "name": "AdSubscribed", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }, { "indexed": false, "internalType": "string", "name": "reason", "type": "string" }], "name": "AdminDelisted", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }], "name": "AdminRemovedFromFeatured", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }], "name": "DisputeRaised", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }, { "indexed": false, "internalType": "bool", "name": "paidToSeller", "type": "bool" }], "name": "DisputeResolved", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "seller", "type": "address" }], "name": "FeaturedListingsUpdated", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }], "name": "FundsAutoReleased", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }, { "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }, { "indexed": false, "internalType": "address", "name": "buyer", "type": "address" }, { "indexed": false, "internalType": "string", "name": "color", "type": "string" }, { "indexed": false, "internalType": "string", "name": "size", "type": "string" }], "name": "ItemBought", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }], "name": "ItemCancelled", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }], "name": "ItemDelisted", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "id", "type": "uint256" }, { "indexed": false, "internalType": "string", "name": "name", "type": "string" }, { "indexed": false, "internalType": "uint256", "name": "price", "type": "uint256" }, { "indexed": false, "internalType": "address", "name": "seller", "type": "address" }], "name": "ItemListed", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }], "name": "ListingUpdated", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "user", "type": "address" }, { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }, { "indexed": false, "internalType": "string", "name": "reason", "type": "string" }], "name": "PointsAwarded", "type": "event" },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "orderId", "type": "uint256" }, { "indexed": false, "internalType": "uint8", "name": "status", "type": "uint8" }], "name": "ShippingUpdated", "type": "event" },
-  { "inputs": [], "name": "MAX_FEATURED_PER_SELLER", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "adSubscriptionDuration", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "", "type": "address" }], "name": "adSubscriptionExpiry", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "adSubscriptionFee", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "admin", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_reason", "type": "string" }], "name": "adminDelistItem", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }], "name": "adminRemoveFromFeatured", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }], "name": "autoRelease", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }, { "internalType": "string", "name": "_size", "type": "string" }], "name": "buyItem", "outputs": [], "stateMutability": "payable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256[]", "name": "_listingIds", "type": "uint256[]" }, { "internalType": "string[]", "name": "_colors", "type": "string[]" }, { "internalType": "string[]", "name": "_sizes", "type": "string[]" }, { "internalType": "address", "name": "_token", "type": "address" }], "name": "buyMultiple", "outputs": [], "stateMutability": "payable", "type": "function" },
-  { "inputs": [], "name": "buyerFeePercent", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }], "name": "cancelAndRefund", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "claimWelcomeBonus", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }], "name": "delistItem", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "feeWallet", "outputs": [{ "internalType": "address payable", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }, { "internalType": "string", "name": "_size", "type": "string" }], "name": "getAvailableStock", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }], "name": "getColorImage", "outputs": [{ "internalType": "string", "name": "", "type": "string" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_id", "type": "uint256" }], "name": "getListing", "outputs": [{ "internalType": "string", "name": "", "type": "string" }, { "internalType": "string", "name": "", "type": "string" }, { "internalType": "string", "name": "", "type": "string" }, { "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "address", "name": "", "type": "address" }, { "internalType": "address", "name": "", "type": "address" }, { "internalType": "bool", "name": "", "type": "bool" }, { "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_id", "type": "uint256" }], "name": "getListingVariants", "outputs": [{ "internalType": "string[]", "name": "", "type": "string[]" }, { "internalType": "string[]", "name": "", "type": "string[]" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_id", "type": "uint256" }], "name": "getOrder", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "address", "name": "", "type": "address" }, { "internalType": "string", "name": "", "type": "string" }, { "internalType": "string", "name": "", "type": "string" }, { "internalType": "bool", "name": "", "type": "bool" }, { "internalType": "bool", "name": "", "type": "bool" }, { "internalType": "bool", "name": "", "type": "bool" }, { "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "uint8", "name": "", "type": "uint8" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "_seller", "type": "address" }], "name": "getSellerFeaturedListings", "outputs": [{ "internalType": "uint256[]", "name": "", "type": "uint256[]" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }], "name": "getTotalPrice", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "", "type": "address" }], "name": "hasClaimedWelcomeBonus", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }], "name": "isFeatured", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "string", "name": "_name", "type": "string" }, { "internalType": "string", "name": "_imageUrl", "type": "string" }, { "internalType": "string", "name": "_category", "type": "string" }, { "internalType": "uint256", "name": "_price", "type": "uint256" }, { "internalType": "address", "name": "_paymentToken", "type": "address" }, { "internalType": "uint256", "name": "_stock", "type": "uint256" }], "name": "listItem", "outputs": [], "stateMutability": "payable", "type": "function" },
-  { "inputs": [{ "internalType": "string", "name": "_name", "type": "string" }, { "internalType": "string", "name": "_imageUrl", "type": "string" }, { "internalType": "string", "name": "_category", "type": "string" }, { "internalType": "uint256", "name": "_price", "type": "uint256" }, { "internalType": "address", "name": "_paymentToken", "type": "address" }, { "internalType": "string[]", "name": "_colors", "type": "string[]" }, { "internalType": "string[]", "name": "_sizes", "type": "string[]" }, { "internalType": "uint256[]", "name": "_stockMatrix", "type": "uint256[]" }, { "internalType": "string[]", "name": "_colorImages", "type": "string[]" }], "name": "listItemWithVariants", "outputs": [], "stateMutability": "payable", "type": "function" },
-  { "inputs": [], "name": "listingCount", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "listingFee", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "orderCount", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "", "type": "address" }], "name": "points", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pointsPerListing", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pointsPerPurchase", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pointsPerSale", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pointsSystemActive", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }], "name": "raiseDispute", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }], "name": "releaseFunds", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "releaseWindow", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }, { "internalType": "bool", "name": "payToSeller", "type": "bool" }], "name": "resolveDispute", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "sellerFeePercent", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_seconds", "type": "uint256" }], "name": "setAdSubscriptionDuration", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_fee", "type": "uint256" }], "name": "setAdSubscriptionFee", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256[]", "name": "_listingIds", "type": "uint256[]" }], "name": "setFeaturedListings", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_fee", "type": "uint256" }], "name": "setListingFee", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_points", "type": "uint256" }], "name": "setPointsPerListing", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_points", "type": "uint256" }], "name": "setPointsPerPurchase", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_points", "type": "uint256" }], "name": "setPointsPerSale", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "bool", "name": "_active", "type": "bool" }], "name": "setPointsSystemActive", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_points", "type": "uint256" }], "name": "setWelcomeBonusPoints", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "subscribeToAds", "outputs": [], "stateMutability": "payable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }, { "internalType": "string", "name": "_newImageUrl", "type": "string" }], "name": "updateColorImage", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_name", "type": "string" }, { "internalType": "string", "name": "_imageUrl", "type": "string" }, { "internalType": "string", "name": "_category", "type": "string" }, { "internalType": "uint256", "name": "_price", "type": "uint256" }], "name": "updateListing", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }, { "internalType": "uint8", "name": "_status", "type": "uint8" }], "name": "updateShippingStatus", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "uint256", "name": "_newStock", "type": "uint256" }], "name": "updateSimpleStock", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }, { "internalType": "string", "name": "_size", "type": "string" }, { "internalType": "uint256", "name": "_newStock", "type": "uint256" }], "name": "updateVariantStock", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "welcomeBonusPoints", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" }
-] as const;
+});
