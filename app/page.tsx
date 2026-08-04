@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
@@ -146,6 +146,8 @@ export default function Ecommerce() {
   const [newPointsPerPurchase, setNewPointsPerPurchase] = useState('');
   const [newPointsPerSale, setNewPointsPerSale] = useState('');
   const [newWelcomeBonus, setNewWelcomeBonus] = useState('');
+  const [newReferralPoints, setNewReferralPoints] = useState('');
+  const [newRefereeBonusPoints, setNewRefereeBonusPoints] = useState('');
   const [modListingId, setModListingId] = useState('');
   const [modReason, setModReason] = useState('');
   const [modFeaturedListingId, setModFeaturedListingId] = useState('');
@@ -153,6 +155,8 @@ export default function Ecommerce() {
   const [sellerOnboardOpen, setSellerOnboardOpen] = useState(false);
   const [sellerOnboardStep, setSellerOnboardStep] = useState(1);
   const [sellerOnboardAgreed, setSellerOnboardAgreed] = useState(false);
+  const [referralModalOpen, setReferralModalOpen] = useState(false);
+  const [referralLinkCopied, setReferralLinkCopied] = useState(false);
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
@@ -349,6 +353,9 @@ export default function Ecommerce() {
   const { data: myPointsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'points', args: address ? [address] : undefined, query: { enabled: !!address } });
   const myPoints = myPointsData ? Number(myPointsData) : 0;
   const { data: hasClaimedWelcomeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'hasClaimedWelcomeBonus', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const { data: myReferrerData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'referrerOf', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const { data: referralPointsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'referralPoints' });
+  const { data: refereeBonusPointsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'refereeBonusPoints' });
   const hasClaimedWelcome = Boolean(hasClaimedWelcomeData);
   const { data: pointsPerListingData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsPerListing' });
   const { data: pointsPerPurchaseData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsPerPurchase' });
@@ -570,18 +577,48 @@ export default function Ecommerce() {
     }
   }, [myFeaturedListingsData, featuredPickerInitialized]);
 
-  // Auto-claim the one-time welcome bonus the first time a connected wallet is
-  // confirmed not to have claimed it yet - no button needed, guarded so it only
-  // ever tries once per browser session even if the read is briefly stale.
+  // Auto-claim the one-time welcome bonus whenever a connected wallet is confirmed
+  // not to have claimed it yet. Retries on every fresh page load/visit (not just
+  // once ever) so a missed signature or a brief network hiccup doesn't permanently
+  // block the bonus - hasClaimedWelcomeBonusAttemptedRef only stops it firing
+  // more than once within a single page load while the transaction is pending.
+  const welcomeClaimAttemptedRef = useRef(false);
   useEffect(() => {
     if (!isConnected || !address) return;
     if (hasClaimedWelcomeData === undefined) return;
-    if (hasClaimedWelcome) return;
-    const alreadyTried = sessionStorage.getItem(`openspace_welcome_claim_attempted_${address.toLowerCase()}`);
-    if (alreadyTried) return;
-    sessionStorage.setItem(`openspace_welcome_claim_attempted_${address.toLowerCase()}`, 'true');
+    if (hasClaimedWelcome) { welcomeClaimAttemptedRef.current = false; return; }
+    if (welcomeClaimAttemptedRef.current) return;
+    welcomeClaimAttemptedRef.current = true;
     call('claimWelcomeBonus', []);
   }, [isConnected, address, hasClaimedWelcomeData, hasClaimedWelcome]);
+
+  // Capture ?ref=0x... from the URL once, and once a wallet connects, record the
+  // referral relationship on-chain (no points yet - those only pay out the first
+  // time this user actually lists or buys something, per the contract logic).
+  const referralLinkAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    if (myReferrerData === undefined) return;
+    const isAlreadyLinked = myReferrerData && (myReferrerData as string) !== ZERO_ADDRESS;
+    if (isAlreadyLinked) { referralLinkAttemptedRef.current = false; return; }
+    if (referralLinkAttemptedRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (!ref || !ref.startsWith('0x') || ref.length !== 42) return;
+    if (ref.toLowerCase() === address.toLowerCase()) return;
+
+    referralLinkAttemptedRef.current = true;
+    call('setReferrer', [ref]);
+  }, [isConnected, address, myReferrerData]);
+
+  const myReferralLink = address ? `${typeof window !== 'undefined' ? window.location.origin : ''}?ref=${address}` : '';
+  const copyReferralLink = () => {
+    if (!myReferralLink) return;
+    navigator.clipboard.writeText(myReferralLink);
+    setReferralLinkCopied(true);
+    setTimeout(() => setReferralLinkCopied(false), 2000);
+  };
 
   const toggleFeaturedSelection = (listingId: number) => {
     setSelectedFeaturedIds((prev) => {
@@ -604,6 +641,8 @@ export default function Ecommerce() {
     setNewPointsPerPurchase(pointsPerPurchaseData !== undefined ? String(pointsPerPurchaseData) : '');
     setNewPointsPerSale(pointsPerSaleData !== undefined ? String(pointsPerSaleData) : '');
     setNewWelcomeBonus(welcomeBonusPointsData !== undefined ? String(welcomeBonusPointsData) : '');
+    setNewReferralPoints(referralPointsData !== undefined ? String(referralPointsData) : '');
+    setNewRefereeBonusPoints(refereeBonusPointsData !== undefined ? String(refereeBonusPointsData) : '');
     setAdminSettingsOpen(true);
   };
 
@@ -628,6 +667,12 @@ export default function Ecommerce() {
     }
     if (newWelcomeBonus && Number(newWelcomeBonus) >= 0) {
       call('setWelcomeBonusPoints', [BigInt(newWelcomeBonus)]);
+    }
+    if (newReferralPoints && Number(newReferralPoints) >= 0) {
+      call('setReferralPoints', [BigInt(newReferralPoints)]);
+    }
+    if (newRefereeBonusPoints && Number(newRefereeBonusPoints) >= 0) {
+      call('setRefereeBonusPoints', [BigInt(newRefereeBonusPoints)]);
     }
   };
 
@@ -969,6 +1014,7 @@ export default function Ecommerce() {
                             <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               📦 My Purchases {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
                             </button>
+                            <button onClick={() => { setReferralModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🎁 Refer &amp; Earn</button>
                             <button onClick={() => { setSettingsOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Wallet Settings</button>
                             <button onClick={handleDisconnect} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Disconnect</button>
                           </div>
@@ -1489,6 +1535,27 @@ export default function Ecommerce() {
         </div>
       )}
 
+      {referralModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setReferralModalOpen(false)}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">🎁 Refer &amp; Earn</h3>
+              <button onClick={() => setReferralModalOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+            </div>
+            <p className={`text-sm ${subtleText} mb-5`}>
+              Share your link. When someone you invite buys or lists their first item, you get <span className="font-semibold text-amber-500">{referralPointsData !== undefined ? Number(referralPointsData) : '10'} points</span>, and they get a <span className="font-semibold text-amber-500">{refereeBonusPointsData !== undefined ? Number(refereeBonusPointsData) : '5'}-point</span> bonus on top of what they already earn.
+            </p>
+            <div className={`p-3 rounded-xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} mb-3`}>
+              <p className={`text-[11px] ${subtleText} uppercase tracking-wide mb-1 font-semibold`}>Your referral link</p>
+              <p className="text-xs font-mono break-all">{myReferralLink || 'Connect your wallet to get your link'}</p>
+            </div>
+            <button onClick={copyReferralLink} disabled={!myReferralLink} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+              {referralLinkCopied ? '✓ Copied!' : 'Copy My Referral Link'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {settingsOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setSettingsOpen(false)}>
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder}`} onClick={(e) => e.stopPropagation()}>
@@ -1769,6 +1836,8 @@ export default function Ecommerce() {
               <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Purchase</label><input type="number" step="1" min="0" value={newPointsPerPurchase} onChange={(e) => setNewPointsPerPurchase(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Sale</label><input type="number" step="1" min="0" value={newPointsPerSale} onChange={(e) => setNewPointsPerSale(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Welcome Bonus Points</label><input type="number" step="1" min="0" value={newWelcomeBonus} onChange={(e) => setNewWelcomeBonus(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Referral Points (to referrer)</label><input type="number" step="1" min="0" value={newReferralPoints} onChange={(e) => setNewReferralPoints(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Referee Bonus Points (to friend)</label><input type="number" step="1" min="0" value={newRefereeBonusPoints} onChange={(e) => setNewRefereeBonusPoints(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <button onClick={saveAdminSettings} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Fee & Points Settings'}</button>
             </div>
 
