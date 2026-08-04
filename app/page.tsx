@@ -59,6 +59,22 @@ function currencySymbol(tokenAddress: string) {
   return 'TOKEN';
 }
 
+const CLOUDINARY_CLOUD_NAME = 'qczxrjw2';
+const CLOUDINARY_UPLOAD_PRESET = 'openspace_uploads';
+
+async function uploadImageToCloudinary(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error('Upload failed');
+  return data.secure_url as string;
+}
+
 const AVATAR_COLORS = ['from-lime-400 to-emerald-500', 'from-sky-400 to-blue-500', 'from-fuchsia-400 to-purple-500', 'from-amber-400 to-orange-500', 'from-rose-400 to-pink-500'];
 function avatarGradient(addr: string) {
   const sum = addr.slice(2, 10).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -133,6 +149,7 @@ export default function Ecommerce() {
   const [modListingId, setModListingId] = useState('');
   const [modReason, setModReason] = useState('');
   const [modFeaturedListingId, setModFeaturedListingId] = useState('');
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
@@ -359,6 +376,24 @@ export default function Ecommerce() {
   };
 
   const withBuyerFee = (price: bigint): bigint => price + (price * BigInt(buyerFeePct)) / BigInt(100);
+
+  const handleImageFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (url: string) => void,
+    key: string
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingKey(key);
+    try {
+      const url = await uploadImageToCloudinary(file);
+      setter(url);
+    } catch (err) {
+      alert('Image upload failed. Please try again.');
+    }
+    setUploadingKey(null);
+    e.target.value = '';
+  };
 
   const allListings: Listing[] = (() => {
     if (!listingsData || !variantsData || !stockData) return [];
@@ -1058,7 +1093,18 @@ export default function Ecommerce() {
 
                     <div className="space-y-3">
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Item Name</label><input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Vintage Camera" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
-                      <div><label className={`text-xs ${subtleText} block mb-1`}>Image URL</label><input type="text" value={itemImage} onChange={(e) => setItemImage(e.target.value)} placeholder="https://example.com/photo.jpg" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /><p className={`text-[11px] ${subtleText} mt-1`}>Leave blank to use a placeholder image</p></div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>Photo</label>
+                        <input type="text" value={itemImage} onChange={(e) => setItemImage(e.target.value)} placeholder="https://example.com/photo.jpg" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+                        <label className={`mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                          {uploadingKey === 'simple' ? 'Uploading...' : '📷 Upload Photo'}
+                          <input type="file" accept="image/*" className="hidden" disabled={uploadingKey === 'simple'} onChange={(e) => handleImageFileChange(e, setItemImage, 'simple')} />
+                        </label>
+                        {itemImage && (
+                          <img src={itemImage} alt="Preview" className="mt-2 w-16 h-16 rounded-lg object-cover border border-zinc-300/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        )}
+                        <p className={`text-[11px] ${subtleText} mt-1`}>Leave blank to use a placeholder image, or upload a photo, or paste a link</p>
+                      </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Price (in {LIST_CURRENCIES[itemCurrency].symbol})</label><input type="number" step="0.0001" min="0" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="e.g. 0.01" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -1081,7 +1127,7 @@ export default function Ecommerce() {
 
                           {parsedColors.length > 0 && (
                             <div>
-                              <label className={`text-xs ${subtleText} block mb-2`}>Image URL per color (optional - falls back to the main image above)</label>
+                              <label className={`text-xs ${subtleText} block mb-2`}>Photo per color (optional - falls back to the main image above)</label>
                               <div className="space-y-2">
                                 {parsedColors.map((c) => (
                                   <div key={c} className="flex items-center gap-2">
@@ -1093,6 +1139,10 @@ export default function Ecommerce() {
                                       placeholder="https://..."
                                       className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-3 py-2 text-sm outline-none focus:border-lime-400 transition-colors`}
                                     />
+                                    <label className={`shrink-0 px-2 py-2 rounded-lg border ${cardBorder} text-xs cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                                      {uploadingKey === `color-${c}` ? '...' : '📷'}
+                                      <input type="file" accept="image/*" className="hidden" disabled={uploadingKey === `color-${c}`} onChange={(e) => handleImageFileChange(e, (url) => setColorImagesInput((prev) => ({ ...prev, [c]: url })), `color-${c}`)} />
+                                    </label>
                                   </div>
                                 ))}
                               </div>
@@ -1278,7 +1328,17 @@ export default function Ecommerce() {
             </div>
             <div className="space-y-3 mb-5">
               <div><label className={`text-xs ${subtleText} block mb-1`}>Item Name</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
-              <div><label className={`text-xs ${subtleText} block mb-1`}>Image URL</label><input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Photo</label>
+                <input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+                <label className={`mt-2 inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                  {uploadingKey === 'edit' ? 'Uploading...' : '📷 Upload New Photo'}
+                  <input type="file" accept="image/*" className="hidden" disabled={uploadingKey === 'edit'} onChange={(e) => handleImageFileChange(e, setEditImage, 'edit')} />
+                </label>
+                {editImage && (
+                  <img src={editImage} alt="Preview" className="mt-2 w-16 h-16 rounded-lg object-cover border border-zinc-300/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                )}
+              </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               {editingListingId !== null && !getListingById(editingListingId)?.hasVariants && (
