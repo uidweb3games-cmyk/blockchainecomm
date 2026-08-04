@@ -150,6 +150,9 @@ export default function Ecommerce() {
   const [modReason, setModReason] = useState('');
   const [modFeaturedListingId, setModFeaturedListingId] = useState('');
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [sellerOnboardOpen, setSellerOnboardOpen] = useState(false);
+  const [sellerOnboardStep, setSellerOnboardStep] = useState(1);
+  const [sellerOnboardAgreed, setSellerOnboardAgreed] = useState(false);
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
@@ -301,6 +304,9 @@ export default function Ecommerce() {
     localStorage.setItem(sellerProfileKey(address), JSON.stringify(profile));
     setSellerProfile(profile);
     setSellerRegOpen(false);
+    setSellerOnboardOpen(false);
+    setSellerOnboardStep(1);
+    setSellerOnboardAgreed(false);
   };
   const openSellerReg = () => { setShopNameInput(sellerProfile?.shopName ?? ''); setShopBioInput(sellerProfile?.bio ?? ''); setSellerRegOpen(true); };
   const openWalletChoice = () => { resetEmailFlow(); setOauthErr(''); setWalletChoiceOpen(true); };
@@ -330,6 +336,8 @@ export default function Ecommerce() {
   const { data: buyerFeePercent } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'buyerFeePercent' });
   const { data: listingFeeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingFee' });
   const listingFeeWei = listingFeeData ?? BigInt(0);
+  const { data: releaseWindowData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'releaseWindow' });
+  const releaseWindow = releaseWindowData;
   const { data: adSubscriptionFeeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'adSubscriptionFee' });
   const adSubscriptionFeeWei = adSubscriptionFeeData ?? BigInt(0);
   const { data: adSubscriptionDurationData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'adSubscriptionDuration' });
@@ -930,7 +938,7 @@ export default function Ecommerce() {
                     <div className="p-2">
                       <div className="space-y-1">
                         <button onClick={() => { setActiveTab('shop'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>🛍 Buy</button>
-                        <button onClick={() => { setActiveTab('sell'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>🏪 Become a Seller / Merchant</button>
+                        <button onClick={() => { setActiveTab('sell'); setMenuOpen(false); if (!sellerProfile) { setSellerOnboardStep(1); setSellerOnboardOpen(true); } }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'sell' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>🏪 Become a Seller / Merchant</button>
                         {isAdmin && (<button onClick={() => { setActiveTab('analytics'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'analytics' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📊 Analytics</button>)}
                       </div>
                       <div className={`border-t ${cardBorder} mt-2 pt-2 space-y-1`}>
@@ -1072,13 +1080,9 @@ export default function Ecommerce() {
               </div>
             ) : !sellerProfile ? (
               <div className={`${cardBg} rounded-3xl p-8 border ${cardBorder} max-w-md`}>
-                <h3 className="font-semibold text-lg mb-1">Set up your shop</h3>
-                <p className={`text-sm ${subtleText} mb-5`}>Just a shop name and a short bio — this only takes a moment, and you only do it once.</p>
-                <div className="space-y-3 mb-5">
-                  <div><label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label><input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
-                  <div><label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label><textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} /></div>
-                </div>
-                <button onClick={saveSellerProfile} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all">Create My Shop</button>
+                <h3 className="font-semibold text-lg mb-1">Become a Seller</h3>
+                <p className={`text-sm ${subtleText} mb-5`}>A short, one-time setup — shop details, then a quick overview of how fees and escrow work.</p>
+                <button onClick={() => { setSellerOnboardStep(1); setSellerOnboardOpen(true); }} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all">Start Seller Registration</button>
               </div>
             ) : (
               <>
@@ -1305,6 +1309,104 @@ export default function Ecommerce() {
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
+
+      {sellerOnboardOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[80] p-4">
+          <div className={`${cardBg} rounded-3xl w-full max-w-lg border ${cardBorder} overflow-hidden max-h-[92vh] flex flex-col`}>
+            <div className={`px-6 pt-6 pb-4 border-b ${cardBorder}`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-xl">Become a Seller</h3>
+                <button onClick={() => { setSellerOnboardOpen(false); setSellerOnboardStep(1); }} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+              </div>
+              <div className="flex gap-1.5">
+                {[1, 2, 3, 4].map((s) => (
+                  <div key={s} className={`h-1.5 flex-1 rounded-full ${s <= sellerOnboardStep ? 'bg-gradient-to-r from-lime-400 to-sky-400' : darkMode ? 'bg-white/10' : 'bg-zinc-100'}`} />
+                ))}
+              </div>
+            </div>
+
+            <div className="px-6 py-6 overflow-y-auto flex-1">
+              {sellerOnboardStep === 1 && (
+                <div>
+                  <div className="text-4xl mb-4">🏪</div>
+                  <h4 className="font-semibold text-lg mb-2">Welcome, future seller</h4>
+                  <p className={`text-sm ${subtleText} mb-5`}>OpenSpace is built to make selling simple and fair. Here's what that means for you:</p>
+                  <div className="space-y-3 mb-2">
+                    <div className={`p-3 rounded-xl border ${cardBorder} flex items-start gap-3`}>
+                      <span className="text-lg shrink-0">🔒</span>
+                      <div><p className="text-sm font-medium">Escrow-protected sales</p><p className={`text-xs ${subtleText}`}>Buyer funds are locked on-chain the moment they check out — no chargebacks, no surprises.</p></div>
+                    </div>
+                    <div className={`p-3 rounded-xl border ${cardBorder} flex items-start gap-3`}>
+                      <span className="text-lg shrink-0">⚡</span>
+                      <div><p className="text-sm font-medium">Fast, direct payouts</p><p className={`text-xs ${subtleText}`}>Funds go straight to your wallet once a sale completes — no multi-day holding period.</p></div>
+                    </div>
+                    <div className={`p-3 rounded-xl border ${cardBorder} flex items-start gap-3`}>
+                      <span className="text-lg shrink-0">💰</span>
+                      <div><p className="text-sm font-medium">Low, transparent fees</p><p className={`text-xs ${subtleText}`}>Just a small seller fee per sale — visible on-chain, never hidden.</p></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {sellerOnboardStep === 2 && (
+                <div>
+                  <h4 className="font-semibold text-lg mb-1">Set up your shop</h4>
+                  <p className={`text-sm ${subtleText} mb-5`}>A name and a short bio — this only takes a moment, and you only do it once.</p>
+                  <div className="space-y-3">
+                    <div><label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label><input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+                    <div><label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label><textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell? What makes your shop worth checking out?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} /></div>
+                  </div>
+                </div>
+              )}
+
+              {sellerOnboardStep === 3 && (
+                <div>
+                  <h4 className="font-semibold text-lg mb-1">Fees &amp; how payouts work</h4>
+                  <p className={`text-sm ${subtleText} mb-4`}>Quick overview before you start listing:</p>
+                  <div className={`rounded-xl border ${cardBorder} divide-y ${darkMode ? 'divide-white/10' : 'divide-zinc-100'} mb-4`}>
+                    <div className="flex justify-between px-4 py-3 text-sm"><span className={subtleText}>Seller fee per sale</span><span className="font-semibold">{sellerFeePercent ? Number(sellerFeePercent) : '—'}%</span></div>
+                    <div className="flex justify-between px-4 py-3 text-sm"><span className={subtleText}>Listing fee (per item)</span><span className="font-semibold">{formatEther(listingFeeWei)} tBNB</span></div>
+                    <div className="flex justify-between px-4 py-3 text-sm"><span className={subtleText}>When you get paid</span><span className="font-semibold text-right">On buyer confirmation, or automatically after {releaseWindow ? Math.round(Number(releaseWindow) / 60) : '5'} min</span></div>
+                  </div>
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input type="checkbox" checked={sellerOnboardAgreed} onChange={(e) => setSellerOnboardAgreed(e.target.checked)} className="mt-0.5 shrink-0" />
+                    <span className={`text-xs ${subtleText}`}>I understand fees are charged on-chain per sale/listing, and that only I control my shop's funds and inventory.</span>
+                  </label>
+                </div>
+              )}
+
+              {sellerOnboardStep === 4 && (
+                <div className="text-center py-4">
+                  <div className="text-5xl mb-4">🎉</div>
+                  <h4 className="font-semibold text-xl mb-2">You're almost a seller!</h4>
+                  <p className={`text-sm ${subtleText} mb-1`}>Shop: <span className="font-medium">{shopNameInput || '—'}</span></p>
+                  <p className={`text-sm ${subtleText}`}>Tap below to confirm and start listing your first item.</p>
+                </div>
+              )}
+            </div>
+
+            <div className={`px-6 py-4 border-t ${cardBorder} flex gap-2`}>
+              {sellerOnboardStep > 1 && (
+                <button onClick={() => setSellerOnboardStep((s) => s - 1)} className={`px-4 py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>Back</button>
+              )}
+              {sellerOnboardStep < 4 ? (
+                <button
+                  onClick={() => {
+                    if (sellerOnboardStep === 2 && !shopNameInput.trim()) { alert('Please enter a shop name'); return; }
+                    if (sellerOnboardStep === 3 && !sellerOnboardAgreed) { alert('Please confirm you understand the fee terms'); return; }
+                    setSellerOnboardStep((s) => s + 1);
+                  }}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl font-semibold hover:opacity-90 transition-all"
+                >
+                  Continue
+                </button>
+              ) : (
+                <button onClick={saveSellerProfile} className="flex-1 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl font-semibold hover:opacity-90 transition-all">Confirm &amp; Create My Shop</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {sellerRegOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setSellerRegOpen(false)}>
