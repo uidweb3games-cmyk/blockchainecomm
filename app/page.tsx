@@ -126,6 +126,10 @@ export default function Ecommerce() {
   const [newListingFee, setNewListingFee] = useState('');
   const [newAdFee, setNewAdFee] = useState('');
   const [newAdDurationDays, setNewAdDurationDays] = useState('');
+  const [newPointsPerListing, setNewPointsPerListing] = useState('');
+  const [newPointsPerPurchase, setNewPointsPerPurchase] = useState('');
+  const [newPointsPerSale, setNewPointsPerSale] = useState('');
+  const [newWelcomeBonus, setNewWelcomeBonus] = useState('');
   const [modListingId, setModListingId] = useState('');
   const [modReason, setModReason] = useState('');
   const [modFeaturedListingId, setModFeaturedListingId] = useState('');
@@ -317,6 +321,16 @@ export default function Ecommerce() {
   const mySubscriptionExpiry = mySubscriptionExpiryData ? Number(mySubscriptionExpiryData) : 0;
   const mySubscriptionActive = mySubscriptionExpiry * 1000 > Date.now();
   const { data: myFeaturedListingsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getSellerFeaturedListings', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const { data: myPointsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'points', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const myPoints = myPointsData ? Number(myPointsData) : 0;
+  const { data: hasClaimedWelcomeData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'hasClaimedWelcomeBonus', args: address ? [address] : undefined, query: { enabled: !!address } });
+  const hasClaimedWelcome = Boolean(hasClaimedWelcomeData);
+  const { data: pointsPerListingData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsPerListing' });
+  const { data: pointsPerPurchaseData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsPerPurchase' });
+  const { data: pointsPerSaleData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsPerSale' });
+  const { data: welcomeBonusPointsData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'welcomeBonusPoints' });
+  const { data: pointsSystemActiveData } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'pointsSystemActive' });
+  const pointsSystemActiveNow = pointsSystemActiveData === undefined ? true : Boolean(pointsSystemActiveData);
 
   const lCount = listingCount ? Number(listingCount) : 0;
   const oCount = orderCount ? Number(orderCount) : 0;
@@ -341,7 +355,7 @@ export default function Ecommerce() {
   const { data: feeWalletUsdtBalance } = useReadContract({ address: USDT_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: feeWalletAddress ? [feeWalletAddress as `0x${string}`] : undefined, query: { enabled: !!feeWalletAddress } });
 
   const call = (functionName: string, args: any[], value?: bigint) => {
-    writeContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: functionName as any, args: args as any, ...(value ? { value } : {}) });
+    writeContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: functionName as any, args: args as any, ...(value ? { value } : {}) } as any);
   };
 
   const withBuyerFee = (price: bigint): bigint => price + (price * BigInt(buyerFeePct)) / BigInt(100);
@@ -513,6 +527,19 @@ export default function Ecommerce() {
     }
   }, [myFeaturedListingsData, featuredPickerInitialized]);
 
+  // Auto-claim the one-time welcome bonus the first time a connected wallet is
+  // confirmed not to have claimed it yet - no button needed, guarded so it only
+  // ever tries once per browser session even if the read is briefly stale.
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    if (hasClaimedWelcomeData === undefined) return;
+    if (hasClaimedWelcome) return;
+    const alreadyTried = sessionStorage.getItem(`openspace_welcome_claim_attempted_${address.toLowerCase()}`);
+    if (alreadyTried) return;
+    sessionStorage.setItem(`openspace_welcome_claim_attempted_${address.toLowerCase()}`, 'true');
+    call('claimWelcomeBonus', []);
+  }, [isConnected, address, hasClaimedWelcomeData, hasClaimedWelcome]);
+
   const toggleFeaturedSelection = (listingId: number) => {
     setSelectedFeaturedIds((prev) => {
       if (prev.includes(listingId)) return prev.filter((id) => id !== listingId);
@@ -530,6 +557,10 @@ export default function Ecommerce() {
     setNewListingFee(formatEther(listingFeeWei));
     setNewAdFee(formatEther(adSubscriptionFeeWei));
     setNewAdDurationDays(adSubscriptionDurationSeconds ? String(Math.round(adSubscriptionDurationSeconds / 86400)) : '');
+    setNewPointsPerListing(pointsPerListingData !== undefined ? String(pointsPerListingData) : '');
+    setNewPointsPerPurchase(pointsPerPurchaseData !== undefined ? String(pointsPerPurchaseData) : '');
+    setNewPointsPerSale(pointsPerSaleData !== undefined ? String(pointsPerSaleData) : '');
+    setNewWelcomeBonus(welcomeBonusPointsData !== undefined ? String(welcomeBonusPointsData) : '');
     setAdminSettingsOpen(true);
   };
 
@@ -543,6 +574,22 @@ export default function Ecommerce() {
     if (newAdDurationDays && Number(newAdDurationDays) > 0) {
       call('setAdSubscriptionDuration', [BigInt(Number(newAdDurationDays) * 86400)]);
     }
+    if (newPointsPerListing && Number(newPointsPerListing) >= 0) {
+      call('setPointsPerListing', [BigInt(newPointsPerListing)]);
+    }
+    if (newPointsPerPurchase && Number(newPointsPerPurchase) >= 0) {
+      call('setPointsPerPurchase', [BigInt(newPointsPerPurchase)]);
+    }
+    if (newPointsPerSale && Number(newPointsPerSale) >= 0) {
+      call('setPointsPerSale', [BigInt(newPointsPerSale)]);
+    }
+    if (newWelcomeBonus && Number(newWelcomeBonus) >= 0) {
+      call('setWelcomeBonusPoints', [BigInt(newWelcomeBonus)]);
+    }
+  };
+
+  const togglePointsSystem = () => {
+    call('setPointsSystemActive', [!pointsSystemActiveNow]);
   };
 
   const handleAdminDelist = () => {
@@ -871,6 +918,11 @@ export default function Ecommerce() {
                               <div className="flex items-center justify-between"><div className="flex items-center gap-1.5"><span className="w-5 h-5 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-[9px] font-bold text-white shrink-0">U</span><span className={`text-[11px] font-medium ${subtleText}`}>USDT</span></div><span className="text-xs font-mono font-semibold tabular-nums">{myUsdtBalance !== undefined ? (Number(myUsdtBalance) / 1e18).toFixed(2) : '...'}</span></div>
                             </div>
                             {loginIdentity && (<div className={`px-3 pb-1 text-center text-[11px] ${subtleText} truncate`}>{loginIdentity}</div>)}
+                            <div className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-400/20 to-yellow-500/20 border border-amber-400/40 flex items-center justify-center gap-1.5">
+                              <span className="text-sm">⭐</span>
+                              <span className="text-sm font-bold text-amber-500">{myPoints}</span>
+                              <span className={`text-xs ${subtleText}`}>points</span>
+                            </div>
                             <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               📦 My Purchases {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
                             </button>
@@ -1551,7 +1603,19 @@ export default function Ecommerce() {
               <div><label className={`text-xs ${subtleText} block mb-1`}>Listing Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newListingFee} onChange={(e) => setNewListingFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newAdFee} onChange={(e) => setNewAdFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Duration (days)</label><input type="number" step="1" min="1" value={newAdDurationDays} onChange={(e) => setNewAdDurationDays(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
-              <button onClick={saveAdminSettings} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Fee Settings'}</button>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Listing</label><input type="number" step="1" min="0" value={newPointsPerListing} onChange={(e) => setNewPointsPerListing(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Purchase</label><input type="number" step="1" min="0" value={newPointsPerPurchase} onChange={(e) => setNewPointsPerPurchase(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Sale</label><input type="number" step="1" min="0" value={newPointsPerSale} onChange={(e) => setNewPointsPerSale(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Welcome Bonus Points</label><input type="number" step="1" min="0" value={newWelcomeBonus} onChange={(e) => setNewWelcomeBonus(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <button onClick={saveAdminSettings} disabled={isPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Fee & Points Settings'}</button>
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4 mb-4`}>
+              <h4 className="font-semibold text-sm mb-1">Points System</h4>
+              <p className={`text-xs ${subtleText} mb-3`}>{pointsSystemActiveNow ? 'Currently active - new points are being awarded.' : 'Currently OFF - no new points are being awarded. Everyone\'s existing points are unaffected.'}</p>
+              <button onClick={togglePointsSystem} disabled={isPending} className={`w-full py-2 text-sm font-medium rounded-xl disabled:opacity-50 ${pointsSystemActiveNow ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900'}`}>
+                {isPending ? 'Confirm in wallet...' : pointsSystemActiveNow ? 'Turn Off Points System' : 'Turn On Points System'}
+              </button>
             </div>
 
             <div className={`border-t ${cardBorder} pt-4 mb-4`}>
