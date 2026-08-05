@@ -7,6 +7,7 @@ import { useSetActiveWallet } from '@privy-io/wagmi';
 import { formatEther, parseEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
+import { supabase } from './supabaseClient';
 
 const SHIPPING_LABELS = ['Processing', 'Shipped', 'Delivered'];
 const FALLBACK_IMAGE = 'https://placehold.co/400x400/e2e8f0/94a3b8?text=No+Image';
@@ -192,6 +193,9 @@ export default function Ecommerce() {
   const [addressCopied, setAddressCopied] = useState(false);
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
   const [walletSetupTimedOut, setWalletSetupTimedOut] = useState(false);
+  const [shippingInfoMap, setShippingInfoMap] = useState<Record<number, ShippingInfo>>({});
+  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number } | null>(null);
+  const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
   const loginIdentity = privyUser?.google?.email || privyUser?.email?.address || (privyUser?.twitter?.username ? `@${privyUser.twitter.username}` : null);
@@ -333,7 +337,7 @@ export default function Ecommerce() {
 
   // ---------- CONTRACT READS ----------
   const { data: listingCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingCount' });
-  const { data: orderCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'orderCount' });
+  const { data: orderCount, refetch: refetchOrderCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'orderCount' });
   const { data: adminAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'admin' });
   const { data: feeWalletAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'feeWallet' });
   const { data: sellerFeePercent } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'sellerFeePercent' });
@@ -435,6 +439,86 @@ export default function Ecommerce() {
   })();
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
+
+  // ---------- SHIPPING INFO (Supabase) ----------
+  // Sellers need to see the shipping address for orders placed against their listings,
+  // from any device - not just the browser the buyer originally checked out on.
+  useEffect(() => {
+    if (!address || allOrders.length === 0) return;
+    const idsNeeded = allOrders
+      .filter((o) => {
+        const listing = getListingById(o.listingId);
+        return listing && listing.seller.toLowerCase() === address.toLowerCase();
+      })
+      .map((o) => o.id)
+      .filter((id) => shippingInfoMap[id] === undefined);
+    if (idsNeeded.length === 0) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from('shipping_addresses')
+        .select('order_id, full_name, street_address, city, country, phone')
+        .eq('contract_address', MARKETPLACE_ADDRESS.toLowerCase())
+        .in('order_id', idsNeeded);
+      if (error) { console.error('Failed to load shipping info:', error); return; }
+      if (!data || data.length === 0) return;
+      setShippingInfoMap((prev) => {
+        const next = { ...prev };
+        data.forEach((row: any) => {
+          next[row.order_id] = {
+            fullName: row.full_name,
+            address: row.street_address,
+            city: row.city || '',
+            country: row.country || '',
+            phone: row.phone || '',
+          };
+        });
+        return next;
+      });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, allOrders.length]);
+
+  const saveShippingInfoForOrders = async (orderIds: number[], info: ShippingInfo) => {
+    if (!address || orderIds.length === 0) return;
+    const rows = orderIds.map((id) => ({
+      contract_address: MARKETPLACE_ADDRESS.toLowerCase(),
+      order_id: id,
+      buyer_address: address.toLowerCase(),
+      full_name: info.fullName,
+      street_address: info.address,
+      city: info.city,
+      country: info.country,
+      phone: info.phone,
+    }));
+    const { error } = await supabase
+      .from('shipping_addresses')
+      .upsert(rows, { onConflict: 'contract_address,order_id' });
+    if (error) { console.error('Failed to save shipping info:', error); return; }
+    setShippingInfoMap((prev) => {
+      const next = { ...prev };
+      orderIds.forEach((id) => { next[id] = info; });
+      return next;
+    });
+  };
+
+  // Once the actual purchase transaction (buyMultiple) confirms, figure out which
+  // order IDs were just created (orders are created sequentially, one per cart line,
+  // so they're the IDs right after the previous order count) and save the shipping
+  // info against those specific order IDs.
+  useEffect(() => {
+    if (!(txConfirmed && awaitingPurchaseTx && pendingShippingSave)) return;
+    (async () => {
+      const result = await refetchOrderCount();
+      const newCount = result.data ? Number(result.data) : oCount;
+      const { startOrderCount, numItems, info } = pendingShippingSave;
+      const newOrderIds = Array.from({ length: numItems }, (_, i) => startOrderCount + i + 1).filter((id) => id <= newCount);
+      await saveShippingInfoForOrders(newOrderIds, info);
+      setPendingShippingSave(null);
+      setAwaitingPurchaseTx(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed, awaitingPurchaseTx]);
 
   const quickViewListing = quickViewId ? getListingById(quickViewId) ?? null : null;
 
@@ -717,16 +801,6 @@ export default function Ecommerce() {
   }, BigInt(0));
   const cartTotal = withBuyerFee(cartSubtotal);
 
-  const saveShippingInfoForOrders = (orderIds: number[], info: ShippingInfo) => {
-    if (!address) return;
-    orderIds.forEach((id) => localStorage.setItem(`shipping_${MARKETPLACE_ADDRESS}_order_${id}_${address.toLowerCase()}`, JSON.stringify(info)));
-  };
-  const getShippingInfoForOrder = (orderId: number): ShippingInfo | null => {
-    if (!address) return null;
-    const raw = localStorage.getItem(`shipping_${MARKETPLACE_ADDRESS}_order_${orderId}_${address.toLowerCase()}`);
-    return raw ? JSON.parse(raw) : null;
-  };
-
   const proceedToCheckout = (lines: CartLine[], token: string) => {
     const subtotal = lines.reduce((sum, line) => {
       const listing = getListingById(line.listingId);
@@ -739,6 +813,7 @@ export default function Ecommerce() {
 
     if (token.toLowerCase() === ZERO_ADDRESS) {
       call('buyMultiple', [listingIds, colors, sizes, token], totalDue);
+      setAwaitingPurchaseTx(true);
     } else {
       setPendingTokenBuy({ lines, token, totalDue });
       writeContract({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: 'approve', args: [MARKETPLACE_ADDRESS, totalDue] });
@@ -752,6 +827,7 @@ export default function Ecommerce() {
       const sizes = pendingTokenBuy.lines.map((l) => l.size);
       call('buyMultiple', [listingIds, colors, sizes, pendingTokenBuy.token]);
       setPendingTokenBuy(null);
+      setAwaitingPurchaseTx(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txConfirmed]);
@@ -759,6 +835,7 @@ export default function Ecommerce() {
   const confirmShippingAndBuy = () => {
     if (!shippingForm.fullName.trim() || !shippingForm.address.trim()) { alert('Please fill in at least your name and address'); return; }
     if (cart.length === 0 || !cartCurrency) return;
+    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length });
     proceedToCheckout(cart, cartCurrency);
     setCart([]);
     setCartCurrency(null);
@@ -849,7 +926,7 @@ export default function Ecommerce() {
     if (!listing) return null;
     const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
     const symbol = currencySymbol(listing.paymentToken);
-    const shipInfo = context === 'seller' ? getShippingInfoForOrder(order.id) : null;
+    const shipInfo = context === 'seller' ? (shippingInfoMap[order.id] ?? null) : null;
     const isBuyer = isConnected && address?.toLowerCase() === order.buyer.toLowerCase();
     const isSeller = isConnected && address?.toLowerCase() === listing.seller.toLowerCase();
 
@@ -1749,7 +1826,7 @@ export default function Ecommerce() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Shipping Details</h3>
-            <p className={`text-xs ${subtleText} mb-4`}>Stored privately in your browser — never sent to the blockchain.</p>
+            <p className={`text-xs ${subtleText} mb-4`}>Saved securely so your seller can view it to ship your order.</p>
             <div className="space-y-3 mb-5">
               <input type="text" placeholder="Full Name" value={shippingForm.fullName} onChange={(e) => setShippingForm({ ...shippingForm, fullName: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               <input type="text" placeholder="Street Address" value={shippingForm.address} onChange={(e) => setShippingForm({ ...shippingForm, address: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
