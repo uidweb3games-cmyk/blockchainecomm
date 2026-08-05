@@ -390,8 +390,17 @@ export default function Ecommerce() {
   const { data: feeWalletUsdcBalance } = useReadContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: feeWalletAddress ? [feeWalletAddress as `0x${string}`] : undefined, query: { enabled: !!feeWalletAddress } });
   const { data: feeWalletUsdtBalance } = useReadContract({ address: USDT_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: feeWalletAddress ? [feeWalletAddress as `0x${string}`] : undefined, query: { enabled: !!feeWalletAddress } });
 
+  // BNB Smart Chain enforces a network-wide minimum gas price (currently 0.1 Gwei
+  // on the version this testnet is running). MetaMask has a known bug on BSC-type
+  // chains where, if a site doesn't explicitly specify a gas price, it sometimes
+  // guesses a price far below that minimum - causing the transaction to be
+  // rejected before it's even sent. Explicitly setting a fixed, safe gas price
+  // here (well above the minimum, and effectively free on testnet) means
+  // MetaMask never gets a chance to guess wrong.
+  const SAFE_GAS_PRICE = BigInt(3000000000); // 3 Gwei
+
   const call = (functionName: string, args: any[], value?: bigint) => {
-    writeContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: functionName as any, args: args as any, ...(value ? { value } : {}) } as any);
+    writeContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: functionName as any, args: args as any, gasPrice: SAFE_GAS_PRICE, ...(value ? { value } : {}) } as any);
   };
 
   const withBuyerFee = (price: bigint): bigint => price + (price * BigInt(buyerFeePct)) / BigInt(100);
@@ -816,7 +825,7 @@ export default function Ecommerce() {
       setAwaitingPurchaseTx(true);
     } else {
       setPendingTokenBuy({ lines, token, totalDue });
-      writeContract({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: 'approve', args: [MARKETPLACE_ADDRESS, totalDue] });
+      writeContract({ address: token as `0x${string}`, abi: ERC20_ABI, functionName: 'approve', args: [MARKETPLACE_ADDRESS, totalDue], gasPrice: SAFE_GAS_PRICE });
     }
   };
 
