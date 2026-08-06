@@ -107,9 +107,9 @@ function OpenSpaceLogo({ className }: { className?: string }) {
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
       </defs>
-      <path d="M 132 106 A 78 78 0 1 0 132 174" fill="none" stroke="url(#osGrad)" strokeWidth="24" strokeLinecap="round" />
-      <text x="142" y="105" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" fill="url(#osGrad)">PEN</text>
-      <text x="48" y="165" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" letterSpacing="1" fill="url(#osGrad)">SPACE</text>
+      <path d="M 162 106 A 78 78 0 1 0 162 174" fill="none" stroke="url(#osGrad)" strokeWidth="24" strokeLinecap="round" />
+      <text x="172" y="105" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" fill="url(#osGrad)">PEN</text>
+      <text x="78" y="165" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" letterSpacing="1" fill="url(#osGrad)">SPACE</text>
     </svg>
   );
 }
