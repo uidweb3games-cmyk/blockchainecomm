@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance } from 'wagmi';
+import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import { formatEther, parseEther } from 'viem';
@@ -100,7 +100,7 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 
 function OpenSpaceLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 340 130" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 340 155" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
@@ -108,8 +108,8 @@ function OpenSpaceLogo({ className }: { className?: string }) {
         </linearGradient>
       </defs>
       <path d="M 91.37 49 A 42 42 0 1 0 91.37 91" fill="none" stroke="url(#osGrad)" strokeWidth="13" strokeLinecap="round" />
-      <text x="86" y="43" fontFamily="system-ui, sans-serif" fontSize="30" fontWeight="600" fill="url(#osGrad)">pen</text>
-      <text x="40" y="100" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
+      <text x="92" y="61" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="700" fill="url(#osGrad)">pen</text>
+      <text x="40" y="132" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
     </svg>
   );
 }
@@ -152,6 +152,8 @@ export default function Ecommerce() {
   const [modListingId, setModListingId] = useState('');
   const [modReason, setModReason] = useState('');
   const [modFeaturedListingId, setModFeaturedListingId] = useState('');
+  const [faucetToAddress, setFaucetToAddress] = useState('');
+  const [faucetAmount, setFaucetAmount] = useState('0.05');
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [sellerOnboardOpen, setSellerOnboardOpen] = useState(false);
   const [sellerOnboardStep, setSellerOnboardStep] = useState(1);
@@ -403,6 +405,20 @@ export default function Ecommerce() {
     writeContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: functionName as any, args: args as any, gasPrice: SAFE_GAS_PRICE, ...(value ? { value } : {}) } as any);
   };
 
+  // Admin tool: send plain tBNB directly to a tester's wallet, from this site's own
+  // code. Because it explicitly sets the same safe gas price used everywhere else
+  // in the app, it sidesteps MetaMask's unreliable automatic gas guessing entirely -
+  // unlike a manual send from inside MetaMask itself, or relying on third-party
+  // faucets that may be slow, down, or require a mainnet balance.
+  const { sendTransaction, isPending: isFaucetPending } = useSendTransaction();
+  const handleSendTestBnb = () => {
+    if (!faucetToAddress.trim() || !faucetToAddress.trim().startsWith('0x') || faucetToAddress.trim().length !== 42) {
+      alert('Please enter a valid wallet address (starts with 0x, 42 characters)'); return;
+    }
+    if (!faucetAmount || Number(faucetAmount) <= 0) { alert('Please enter a valid amount'); return; }
+    sendTransaction({ to: faucetToAddress.trim() as `0x${string}`, value: parseEther(faucetAmount), gasPrice: SAFE_GAS_PRICE });
+  };
+
   const withBuyerFee = (price: bigint): bigint => price + (price * BigInt(buyerFeePct)) / BigInt(100);
 
   const handleImageFileChange = async (
@@ -594,19 +610,21 @@ export default function Ecommerce() {
 
   const handleListVariants = () => {
     if (!itemName.trim() || !itemPrice || Number(itemPrice) <= 0) { alert('Please enter a valid name and price'); return; }
-    if (parsedColors.length === 0 || parsedSizes.length === 0) { alert('Please enter at least one color and one size'); return; }
+    if (parsedColors.length === 0 && parsedSizes.length === 0) { alert('Please enter at least a color or a size'); return; }
+    const effectiveColors = parsedColors.length > 0 ? parsedColors : [NO_VARIANT];
+    const effectiveSizes = parsedSizes.length > 0 ? parsedSizes : [NO_VARIANT];
     const matrix: bigint[] = [];
-    for (const c of parsedColors) {
-      for (const s of parsedSizes) {
+    for (const c of effectiveColors) {
+      for (const s of effectiveSizes) {
         const key = `${c}|${s}`;
         const val = Number(stockMatrix[key] || '0');
         matrix.push(BigInt(val));
       }
     }
-    const colorImagesArr = parsedColors.map((c) => (colorImagesInput[c] || '').trim());
+    const colorImagesArr = effectiveColors.map((c) => (colorImagesInput[c] || '').trim());
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, parsedColors, parsedSizes, matrix, colorImagesArr], listingFeeWei);
+    call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
 
@@ -851,6 +869,32 @@ export default function Ecommerce() {
     setShippingModal(false);
   };
 
+  // Sponsored strip auto-scroll. Runs continuously like before, but driven by
+  // JS incrementing scrollLeft (instead of a fixed-speed CSS animation) so we
+  // can slow it down and let Prev/Next buttons nudge it on demand - pausing
+  // briefly whenever someone interacts with it, then resuming on its own.
+  const adStripRef = useRef<HTMLDivElement>(null);
+  const adStripPausedRef = useRef(false);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const el = adStripRef.current;
+      if (!el || adStripPausedRef.current) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (el.scrollLeft >= el.scrollWidth / 2) {
+        el.scrollLeft -= el.scrollWidth / 2;
+      } else {
+        el.scrollLeft += 0.35;
+      }
+    }, 30);
+    return () => clearInterval(interval);
+  }, []);
+  const scrollAdStrip = (dir: 'prev' | 'next') => {
+    if (!adStripRef.current) return;
+    adStripPausedRef.current = true;
+    adStripRef.current.scrollBy({ left: dir === 'next' ? 240 : -240, behavior: 'smooth' });
+    setTimeout(() => { adStripPausedRef.current = false; }, 2500);
+  };
+
   if (!mounted) return null;
 
   const bg = darkMode ? 'bg-zinc-950' : 'bg-white';
@@ -905,7 +949,11 @@ export default function Ecommerce() {
 
   const checkoutSummary = cart.length > 0 ? { subtotal: cartSubtotal, fee: cartTotal - cartSubtotal, total: cartTotal, symbol: cartCurrency ? currencySymbol(cartCurrency) : '' } : null;
 
-  const canAddQuickViewToCart = quickViewListing && (!quickViewListing.hasVariants || (pickedColor && pickedSize && getQvStock(pickedColor, pickedSize) > 0));
+  const qvHasColors = quickViewListing ? quickViewListing.colors.some((c) => c !== NO_VARIANT) : false;
+  const qvHasSizes = quickViewListing ? quickViewListing.sizes.some((s) => s !== NO_VARIANT) : false;
+  const qvColorReady = !qvHasColors || !!pickedColor;
+  const qvSizeReady = !qvHasSizes || !!pickedSize;
+  const canAddQuickViewToCart = quickViewListing && (!quickViewListing.hasVariants || (qvColorReady && qvSizeReady && getQvStock(qvHasColors ? pickedColor : NO_VARIANT, qvHasSizes ? pickedSize : NO_VARIANT) > 0));
 
   const renderShopThumb = (listing: Listing) => {
     const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
@@ -1126,23 +1174,39 @@ export default function Ecommerce() {
         )}
 
         {activeTab === 'shop' && adStrip.length > 0 && (
-          <div className={`border-t ${cardBorder} py-3 overflow-hidden`}>
-            <div className="overflow-hidden">
-              <div className="flex gap-3 w-max animate-marquee px-4 sm:px-8">
-                {adStrip.map((listing, i) => {
-                  const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
-                  return (
-                    <button key={`${listing.id}-${i}`} onClick={() => setQuickViewId(listing.id)} className={`flex items-center gap-3 ${cardBg} border ${cardBorder} rounded-2xl pr-4 py-1.5 shrink-0 hover:border-lime-400/60 transition-colors`}>
-                      <img src={displayImage} alt={listing.name} className="w-16 h-16 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
-                      <div className="text-left">
-                        <p className="text-sm font-medium truncate max-w-[140px]">{listing.name}</p>
-                        <p className="text-xs font-mono text-lime-500">{(Number(listing.price) / 1e18).toString()} {currencySymbol(listing.paymentToken)}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+          <div className={`border-t ${cardBorder} py-3 relative`}>
+            <div
+              ref={adStripRef}
+              onMouseEnter={() => { adStripPausedRef.current = true; }}
+              onMouseLeave={() => { adStripPausedRef.current = false; }}
+              onTouchStart={() => { adStripPausedRef.current = true; }}
+              onTouchEnd={() => { setTimeout(() => { adStripPausedRef.current = false; }, 1500); }}
+              className="flex gap-3 overflow-x-auto scroll-smooth px-4 sm:px-8"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {adStrip.map((listing, i) => {
+                const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
+                return (
+                  <button key={`${listing.id}-${i}`} onClick={() => setQuickViewId(listing.id)} className={`flex items-center gap-3 ${cardBg} border ${cardBorder} rounded-2xl pr-4 py-1.5 shrink-0 hover:border-lime-400/60 transition-colors`}>
+                    <img src={displayImage} alt={listing.name} className="w-16 h-16 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                    <div className="text-left">
+                      <p className="text-sm font-medium truncate max-w-[140px]">{listing.name}</p>
+                      <p className="text-xs font-mono text-lime-500">{(Number(listing.price) / 1e18).toString()} {currencySymbol(listing.paymentToken)}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+            <button
+              onClick={() => scrollAdStrip('prev')}
+              aria-label="Scroll sponsored items left"
+              className={`absolute left-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center ${cardBg} border ${cardBorder} shadow-md hover:scale-105 active:scale-95 transition-transform`}
+            >‹</button>
+            <button
+              onClick={() => scrollAdStrip('next')}
+              aria-label="Scroll sponsored items right"
+              className={`absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center ${cardBg} border ${cardBorder} shadow-md hover:scale-105 active:scale-95 transition-transform`}
+            >›</button>
           </div>
         )}
       </header>
@@ -1157,8 +1221,11 @@ export default function Ecommerce() {
               </h2>
             </div>
 
-            <div className="flex gap-4 sm:gap-6">
-              <div className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20">
+            <div className="flex gap-4 sm:gap-6 h-[68vh] sm:h-[72vh]">
+              <div
+                className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20 overflow-y-auto pb-4 [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: 'none' }}
+              >
                 <button onClick={() => setViewCategory(ALL_CATEGORIES)} className="flex flex-col items-center gap-1.5">
                   <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center text-2xl sm:text-3xl ${viewCategory === ALL_CATEGORIES ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/5' : 'bg-zinc-100'} border ${cardBorder}`}`}>🗂️</div>
                   <span className={`text-xs font-medium ${viewCategory === ALL_CATEGORIES ? text : subtleText}`}>All</span>
@@ -1171,7 +1238,10 @@ export default function Ecommerce() {
                 ))}
               </div>
 
-              <div className="flex-1 min-w-0">
+              <div
+                className="flex-1 min-w-0 overflow-y-auto pb-4 pr-1 [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: 'none' }}
+              >
                 {lCount === 0 ? (
                   <p className={subtleText}>No items listed yet.</p>
                 ) : shopListings.length === 0 ? (
@@ -1258,8 +1328,8 @@ export default function Ecommerce() {
                         </>
                       ) : (
                         <>
-                          <div><label className={`text-xs ${subtleText} block mb-1`}>Colors (comma separated)</label><input type="text" value={colorsInput} onChange={(e) => setColorsInput(e.target.value)} placeholder="e.g. Black, Grey, Navy" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
-                          <div><label className={`text-xs ${subtleText} block mb-1`}>Sizes (comma separated)</label><input type="text" value={sizesInput} onChange={(e) => setSizesInput(e.target.value)} placeholder="e.g. S, M, L, XL" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+                          <div><label className={`text-xs ${subtleText} block mb-1`}>Colors (comma separated, optional if this item only has sizes)</label><input type="text" value={colorsInput} onChange={(e) => setColorsInput(e.target.value)} placeholder="e.g. Black, Grey, Navy" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+                          <div><label className={`text-xs ${subtleText} block mb-1`}>Sizes (comma separated, optional if this item only has colors)</label><input type="text" value={sizesInput} onChange={(e) => setSizesInput(e.target.value)} placeholder="e.g. S, M, L, XL" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
 
                           {parsedColors.length > 0 && (
                             <div>
@@ -1311,6 +1381,52 @@ export default function Ecommerce() {
                                     </div>
                                   </div>
                                 ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsedColors.length > 0 && parsedSizes.length === 0 && (
+                            <div>
+                              <label className={`text-xs ${subtleText} block mb-2`}>Stock per color</label>
+                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {parsedColors.map((c) => {
+                                  const key = `${c}|${NO_VARIANT}`;
+                                  return (
+                                    <div key={key} className="flex items-center gap-2">
+                                      <span className={`text-xs ${subtleText} w-16 shrink-0`}>{c}</span>
+                                      <input
+                                        type="number" min="0" step="1"
+                                        value={stockMatrix[key] || ''}
+                                        onChange={(e) => setStockMatrix((prev) => ({ ...prev, [key]: e.target.value }))}
+                                        placeholder="0"
+                                        className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-sm outline-none focus:border-lime-400 transition-colors`}
+                                      />
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {parsedColors.length === 0 && parsedSizes.length > 0 && (
+                            <div>
+                              <label className={`text-xs ${subtleText} block mb-2`}>Stock per size</label>
+                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                {parsedSizes.map((s) => {
+                                  const key = `${NO_VARIANT}|${s}`;
+                                  return (
+                                    <div key={key} className="flex items-center gap-2">
+                                      <span className={`text-xs ${subtleText} w-16 shrink-0`}>{s}</span>
+                                      <input
+                                        type="number" min="0" step="1"
+                                        value={stockMatrix[key] || ''}
+                                        onChange={(e) => setStockMatrix((prev) => ({ ...prev, [key]: e.target.value }))}
+                                        placeholder="0"
+                                        className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-sm outline-none focus:border-lime-400 transition-colors`}
+                                      />
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           )}
@@ -1728,45 +1844,52 @@ export default function Ecommerce() {
 
               {quickViewListing.hasVariants ? (
                 <>
-                  <div className="mb-4">
-                    <p className={`text-xs font-semibold uppercase tracking-wide ${subtleText} mb-2`}>Color</p>
-                    <div className="flex flex-wrap gap-2">
-                      {quickViewListing.colors.map((c) => {
-                        const anySizeAvailable = quickViewListing.sizes.some((s) => getQvStock(c, s) > 0);
-                        return (
-                          <button
-                            key={c}
-                            disabled={!anySizeAvailable}
-                            onClick={() => { setPickedColor(c); setPickedSize(''); }}
-                            className={`px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${!anySizeAvailable ? 'opacity-30 cursor-not-allowed' : pickedColor === c ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
-                          >
-                            {c}
-                          </button>
-                        );
-                      })}
+                  {qvHasColors && (
+                    <div className="mb-4">
+                      <p className={`text-xs font-semibold uppercase tracking-wide ${subtleText} mb-2`}>Color</p>
+                      <div className="flex flex-wrap gap-2">
+                        {quickViewListing.colors.map((c) => {
+                          const anySizeAvailable = quickViewListing.sizes.some((s) => getQvStock(c, s) > 0);
+                          return (
+                            <button
+                              key={c}
+                              disabled={!anySizeAvailable}
+                              onClick={() => { setPickedColor(c); setPickedSize(''); }}
+                              className={`px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${!anySizeAvailable ? 'opacity-30 cursor-not-allowed' : pickedColor === c ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                            >
+                              {c}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div className="mb-5">
-                    <p className={`text-xs font-semibold uppercase tracking-wide ${subtleText} mb-2`}>Size</p>
-                    <div className="flex flex-wrap gap-2">
-                      {quickViewListing.sizes.map((s) => {
-                        const available = pickedColor ? getQvStock(pickedColor, s) > 0 : false;
-                        return (
-                          <button
-                            key={s}
-                            disabled={!pickedColor || !available}
-                            onClick={() => setPickedSize(s)}
-                            className={`px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${!pickedColor || !available ? 'opacity-30 cursor-not-allowed' : pickedSize === s ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
-                          >
-                            {s}
-                          </button>
-                        );
-                      })}
+                  )}
+                  {qvHasSizes && (
+                    <div className="mb-5">
+                      <p className={`text-xs font-semibold uppercase tracking-wide ${subtleText} mb-2`}>Size</p>
+                      <div className="flex flex-wrap gap-2">
+                        {quickViewListing.sizes.map((s) => {
+                          const available = (!qvHasColors || pickedColor) ? getQvStock(qvHasColors ? pickedColor : NO_VARIANT, s) > 0 : false;
+                          return (
+                            <button
+                              key={s}
+                              disabled={(qvHasColors && !pickedColor) || !available}
+                              onClick={() => setPickedSize(s)}
+                              className={`px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${(qvHasColors && !pickedColor) || !available ? 'opacity-30 cursor-not-allowed' : pickedSize === s ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                            >
+                              {s}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {qvColorReady && qvSizeReady && (
+                        <p className={`text-xs ${subtleText} mt-2`}>{getQvStock(qvHasColors ? pickedColor : NO_VARIANT, qvHasSizes ? pickedSize : NO_VARIANT)} left in stock</p>
+                      )}
                     </div>
-                    {pickedColor && pickedSize && (
-                      <p className={`text-xs ${subtleText} mt-2`}>{getQvStock(pickedColor, pickedSize)} left in stock</p>
-                    )}
-                  </div>
+                  )}
+                  {!qvHasSizes && qvColorReady && (
+                    <p className={`text-xs ${subtleText} mb-5`}>{getQvStock(qvHasColors ? pickedColor : NO_VARIANT, NO_VARIANT)} left in stock</p>
+                  )}
                 </>
               ) : (
                 <p className={`text-xs ${subtleText} mb-5`}>{quickViewListing.simpleStock.toString()} in stock</p>
@@ -1777,7 +1900,7 @@ export default function Ecommerce() {
                 onClick={() => { addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : ''); setQuickViewId(null); }}
                 className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-40"
               >
-                {quickViewListing.hasVariants && (!pickedColor || !pickedSize) ? 'Select color and size' : 'Add to Cart'}
+                {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (!qvColorReady ? 'Select a color' : 'Select a size') : 'Add to Cart'}
               </button>
             </div>
           </div>
@@ -1951,6 +2074,16 @@ export default function Ecommerce() {
               <div className="space-y-2">
                 <input type="number" placeholder="Listing ID" value={modFeaturedListingId} onChange={(e) => setModFeaturedListingId(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`} />
                 <button onClick={handleAdminRemoveFeatured} disabled={isPending} className={`w-full py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} disabled:opacity-50`}>{isPending ? 'Confirm in wallet...' : 'Remove From Ads'}</button>
+              </div>
+            </div>
+
+            <div className={`border-t ${cardBorder} pt-4 mt-4`}>
+              <h4 className="font-semibold text-sm mb-1">Fund a Tester (Send Test BNB)</h4>
+              <p className={`text-xs ${subtleText} mb-3`}>Sends tBNB directly from your own wallet to a tester's address, using this site's reliable gas settings - no faucet, no MetaMask guessing.</p>
+              <div className="space-y-2">
+                <input type="text" placeholder="Tester wallet address (0x...)" value={faucetToAddress} onChange={(e) => setFaucetToAddress(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm font-mono`} />
+                <input type="number" step="0.01" min="0" placeholder="Amount in tBNB" value={faucetAmount} onChange={(e) => setFaucetAmount(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                <button onClick={handleSendTestBnb} disabled={isFaucetPending} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl text-sm font-semibold disabled:opacity-50">{isFaucetPending ? 'Confirm in wallet...' : 'Send Test BNB'}</button>
               </div>
             </div>
           </div>
