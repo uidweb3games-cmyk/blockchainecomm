@@ -100,16 +100,16 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 
 function OpenSpaceLogo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 340 155" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 520 260" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
       </defs>
-      <path d="M 91.37 49 A 42 42 0 1 0 91.37 91" fill="none" stroke="url(#osGrad)" strokeWidth="13" strokeLinecap="round" />
-      <text x="92" y="61" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="700" fill="url(#osGrad)">pen</text>
-      <text x="40" y="132" fontFamily="system-ui, sans-serif" fontSize="58" fontWeight="900" letterSpacing="0.5" fill="url(#osGrad)">SPACE</text>
+      <path d="M 132 106 A 78 78 0 1 0 132 174" fill="none" stroke="url(#osGrad)" strokeWidth="24" strokeLinecap="round" />
+      <text x="142" y="105" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" fill="url(#osGrad)">PEN</text>
+      <text x="48" y="165" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" letterSpacing="1" fill="url(#osGrad)">SPACE</text>
     </svg>
   );
 }
@@ -1221,7 +1221,7 @@ export default function Ecommerce() {
               </h2>
             </div>
 
-            <div className="flex gap-4 sm:gap-6 h-[68vh] sm:h-[72vh]">
+            <div className="flex gap-4 sm:gap-6 h-[82vh] sm:h-[86vh]">
               <div
                 className="flex flex-col items-center gap-4 shrink-0 w-16 sm:w-20 overflow-y-auto pb-4 [&::-webkit-scrollbar]:hidden"
                 style={{ scrollbarWidth: 'none' }}
@@ -1247,7 +1247,7 @@ export default function Ecommerce() {
                 ) : shopListings.length === 0 ? (
                   <p className={subtleText}>No items found{searchQuery ? ` matching "${searchQuery}"` : ''}.</p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                     {shopListings.map((listing) => renderShopThumb(listing))}
                   </div>
                 )}
