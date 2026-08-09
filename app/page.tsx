@@ -18,6 +18,7 @@ const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
 const ACTIVE_TAB_KEY = 'openspace_active_tab';
+const DARK_MODE_KEY = 'openspace_dark_mode';
 const PURCHASES_OPEN_KEY = 'openspace_purchases_open';
 const NO_VARIANT = '';
 
@@ -317,7 +318,16 @@ export default function Ecommerce() {
     if (localStorage.getItem(PURCHASES_OPEN_KEY) === 'true') {
       setPurchasesOpen(true);
     }
+    if (localStorage.getItem(DARK_MODE_KEY) === 'true') {
+      setDarkMode(true);
+    }
   }, []);
+
+  // Remember dark/light mode too, same reasoning as the tab.
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem(DARK_MODE_KEY, darkMode ? 'true' : 'false');
+  }, [darkMode, mounted]);
 
   // Remember whichever tab (Buy / Sell / Analytics) the person is on, so a
   // page refresh keeps them there instead of always resetting to the shop.
@@ -865,35 +875,17 @@ export default function Ecommerce() {
 
   const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
 
-  // While a chat window is open, quietly check for new messages every few
-  // seconds - so a reply shows up on its own instead of needing to close
-  // and reopen the chat to see it.
+  // While a chat window is open, quietly check for new messages - so a
+  // reply shows up on its own instead of needing to close and reopen.
   useEffect(() => {
     if (chatModalOrderId === null) return;
     const interval = setInterval(() => {
       loadChatMessages(chatModalOrderId, true);
-    }, 3000);
+    }, 1500);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatModalOrderId]);
 
-  // Quietly set up a person's chat key the first time they check their own
-  // purchases or seller orders - both are things people naturally do anyway,
-  // so by the time someone tries to message them, their key usually already
-  // exists. If they reject the prompt, we just try again next time.
-  useEffect(() => {
-    if (purchasesOpen && address) {
-      ensureChatKeyPair().catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [purchasesOpen, address]);
-
-  useEffect(() => {
-    if (activeTab === 'sell' && sellerProfile && address) {
-      ensureChatKeyPair().catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, sellerProfile, address]);
 
   const checkIfModerator = async () => {
     if (!address) return false;
