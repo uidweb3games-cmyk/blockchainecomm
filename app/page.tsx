@@ -703,9 +703,9 @@ export default function Ecommerce() {
     return hex ? hexToBytesLocal(hex) : null;
   };
 
-  const loadChatMessages = async (orderId: number) => {
+  const loadChatMessages = async (orderId: number, silent = false) => {
     if (!address) return;
-    setChatLoading(true);
+    if (!silent) setChatLoading(true);
     try {
       const myKeys = await ensureChatKeyPair();
       const auth = await ensureChatSessionAuth();
@@ -736,22 +736,41 @@ export default function Ecommerce() {
     } catch (e) {
       console.error('Failed to load chat:', e);
     }
-    setChatLoading(false);
+    if (!silent) setChatLoading(false);
   };
 
   const sendChatMessage = async (orderId: number, toAddress: string) => {
     if (!address || !chatInput.trim()) return;
+    const textToSend = chatInput.trim();
     setChatSending(true);
     setChatUnavailable(null);
+    setChatInput('');
+
+    // Show the message right away using what was actually typed - no need
+    // to wait for a round trip to the server just to display your own words.
+    const optimisticMessage: ChatMessage = {
+      id: -Date.now(),
+      fromAddress: address,
+      toAddress,
+      text: textToSend,
+      createdAt: new Date().toISOString(),
+    };
+    setChatMessagesMap((prev) => ({ ...prev, [orderId]: [...(prev[orderId] || []), optimisticMessage] }));
+
     try {
       const myKeys = await ensureChatKeyPair();
       const auth = await ensureChatSessionAuth();
       if (!myKeys || !auth) return;
       const theirPub = await fetchTheirPublicKey(toAddress);
-      if (!theirPub) { setChatUnavailable(orderId); setChatSending(false); return; }
+      if (!theirPub) {
+        setChatUnavailable(orderId);
+        setChatMessagesMap((prev) => ({ ...prev, [orderId]: (prev[orderId] || []).filter((m) => m.id !== optimisticMessage.id) }));
+        setChatSending(false);
+        return;
+      }
 
       const nonce = nacl.randomBytes(24);
-      const plaintext = new TextEncoder().encode(chatInput.trim());
+      const plaintext = new TextEncoder().encode(textToSend);
       const cipher = nacl.box(plaintext, nonce, theirPub, myKeys.secretKey);
       const ciphertextHex = bytesToHexLocal(cipher);
       const nonceHex = bytesToHexLocal(nonce);
@@ -759,9 +778,14 @@ export default function Ecommerce() {
       const { error } = await supabase.functions.invoke('dispute-chat', {
         body: { action: 'sendMessage', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, toAddress, ciphertext: ciphertextHex, nonce: nonceHex, message: auth.message, signature: auth.signature },
       });
-      if (error) { console.error('Failed to send message:', error); return; }
-      setChatInput('');
-      await loadChatMessages(orderId);
+      if (error) {
+        console.error('Failed to send message:', error);
+        setChatMessagesMap((prev) => ({ ...prev, [orderId]: (prev[orderId] || []).filter((m) => m.id !== optimisticMessage.id) }));
+        return;
+      }
+      // Quietly sync with the server in the background - the message is
+      // already showing, this just confirms it and picks up anything new.
+      loadChatMessages(orderId, true);
     } catch (e) {
       console.error('Failed to send message:', e);
     }
