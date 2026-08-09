@@ -843,6 +843,18 @@ export default function Ecommerce() {
 
   const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
 
+  // While a chat window is open, quietly check for new messages every few
+  // seconds - so a reply shows up on its own instead of needing to close
+  // and reopen the chat to see it.
+  useEffect(() => {
+    if (chatModalOrderId === null) return;
+    const interval = setInterval(() => {
+      loadChatMessages(chatModalOrderId, true);
+    }, 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatModalOrderId]);
+
   // Quietly set up a person's chat key the first time they check their own
   // purchases or seller orders - both are things people naturally do anyway,
   // so by the time someone tries to message them, their key usually already
@@ -1395,7 +1407,7 @@ export default function Ecommerce() {
 
           {(isBuyer || isSeller) && (
             <button
-              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatUnavailable(null); setChatModalOrderId(order.id); loadChatMessages(order.id); }}
+              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatUnavailable(null); setChatModalOrderId(order.id); loadChatMessages(order.id, chatMessagesMap[order.id] !== undefined); }}
               className={`w-full mb-2 py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
             >
               💬 Message {isBuyer ? 'Seller' : 'Buyer'}
