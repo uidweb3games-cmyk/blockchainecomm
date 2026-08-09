@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction } from 'wagmi';
+import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction, useSignMessage } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import { formatEther, parseEther } from 'viem';
@@ -196,7 +196,7 @@ export default function Ecommerce() {
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
   const [walletSetupTimedOut, setWalletSetupTimedOut] = useState(false);
   const [shippingInfoMap, setShippingInfoMap] = useState<Record<number, ShippingInfo>>({});
-  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number } | null>(null);
+  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
@@ -465,66 +465,107 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
-  // ---------- SHIPPING INFO (Supabase) ----------
-  // Sellers need to see the shipping address for orders placed against their listings,
-  // from any device - not just the browser the buyer originally checked out on.
-  useEffect(() => {
-    if (!address || allOrders.length === 0) return;
-    const idsNeeded = allOrders
-      .filter((o) => {
+  // ---------- SHIPPING INFO (Supabase, signature-gated) ----------
+  // Shipping data is no longer readable/writable directly from the browser.
+  // Every request must include a wallet signature that the Edge Function
+  // verifies server-side before touching the database - so a stranger can't
+  // read someone else's address, or write fake data into someone's order.
+  const { signMessageAsync } = useSignMessage();
+  const [sellerShipAuth, setSellerShipAuth] = useState<{ address: string; message: string; signature: string } | null>(null);
+  const [unlockingShipInfo, setUnlockingShipInfo] = useState(false);
+
+  const myOrdersToFulfillIds = address
+    ? allOrders.filter((o) => {
         const listing = getListingById(o.listingId);
         return listing && listing.seller.toLowerCase() === address.toLowerCase();
-      })
-      .map((o) => o.id)
-      .filter((id) => shippingInfoMap[id] === undefined);
+      }).map((o) => o.id)
+    : [];
+
+  const fetchSellerShippingInfo = async (auth: { address: string; message: string; signature: string }, orderIds: number[]) => {
+    const idsNeeded = orderIds.filter((id) => shippingInfoMap[id] === undefined);
     if (idsNeeded.length === 0) return;
-
-    (async () => {
-      const { data, error } = await supabase
-        .from('shipping_addresses')
-        .select('order_id, full_name, street_address, city, country, phone')
-        .eq('contract_address', MARKETPLACE_ADDRESS.toLowerCase())
-        .in('order_id', idsNeeded);
-      if (error) { console.error('Failed to load shipping info:', error); return; }
-      if (!data || data.length === 0) return;
-      setShippingInfoMap((prev) => {
-        const next = { ...prev };
-        data.forEach((row: any) => {
-          next[row.order_id] = {
-            fullName: row.full_name,
-            address: row.street_address,
-            city: row.city || '',
-            country: row.country || '',
-            phone: row.phone || '',
-          };
-        });
-        return next;
-      });
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, allOrders.length]);
-
-  const saveShippingInfoForOrders = async (orderIds: number[], info: ShippingInfo) => {
-    if (!address || orderIds.length === 0) return;
-    const rows = orderIds.map((id) => ({
-      contract_address: MARKETPLACE_ADDRESS.toLowerCase(),
-      order_id: id,
-      buyer_address: address.toLowerCase(),
-      full_name: info.fullName,
-      street_address: info.address,
-      city: info.city,
-      country: info.country,
-      phone: info.phone,
-    }));
-    const { error } = await supabase
-      .from('shipping_addresses')
-      .upsert(rows, { onConflict: 'contract_address,order_id' });
-    if (error) { console.error('Failed to save shipping info:', error); return; }
+    const { data, error } = await supabase.functions.invoke('shipping-info', {
+      body: {
+        action: 'get',
+        contractAddress: MARKETPLACE_ADDRESS,
+        sellerAddress: auth.address,
+        orderIds: idsNeeded,
+        message: auth.message,
+        signature: auth.signature,
+      },
+    });
+    if (error) { console.error('Failed to load shipping info:', error); return; }
+    const rows = data?.data;
+    if (!rows || rows.length === 0) return;
     setShippingInfoMap((prev) => {
       const next = { ...prev };
-      orderIds.forEach((id) => { next[id] = info; });
+      rows.forEach((row: any) => {
+        next[row.order_id] = {
+          fullName: row.full_name,
+          address: row.street_address,
+          city: row.city || '',
+          country: row.country || '',
+          phone: row.phone || '',
+        };
+      });
       return next;
     });
+  };
+
+  const unlockSellerShipping = async () => {
+    if (!address) return;
+    setUnlockingShipInfo(true);
+    try {
+      const message = `OpenSpace shipping unlock | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | seller:${address.toLowerCase()}`;
+      const signature = await signMessageAsync({ message });
+      const auth = { address, message, signature };
+      setSellerShipAuth(auth);
+      await fetchSellerShippingInfo(auth, myOrdersToFulfillIds);
+    } catch (e) {
+      console.error('Shipping unlock failed or was rejected:', e);
+    }
+    setUnlockingShipInfo(false);
+  };
+
+  // If the seller already unlocked this session and new orders show up, fetch
+  // those too without asking them to sign again.
+  useEffect(() => {
+    if (!sellerShipAuth || !address || sellerShipAuth.address.toLowerCase() !== address.toLowerCase()) return;
+    if (myOrdersToFulfillIds.length === 0) return;
+    fetchSellerShippingInfo(sellerShipAuth, myOrdersToFulfillIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sellerShipAuth, myOrdersToFulfillIds.join(',')]);
+
+  useEffect(() => {
+    setSellerShipAuth(null);
+  }, [address]);
+
+  const saveShippingInfoForOrders = async (orderIds: number[], info: ShippingInfo, sellerAddresses: Record<number, string>) => {
+    if (!address || orderIds.length === 0) return;
+    try {
+      const message = `OpenSpace shipping save | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | orders:${orderIds.join(',')} | buyer:${address.toLowerCase()}`;
+      const signature = await signMessageAsync({ message });
+      const { error } = await supabase.functions.invoke('shipping-info', {
+        body: {
+          action: 'save',
+          contractAddress: MARKETPLACE_ADDRESS,
+          buyerAddress: address,
+          orderIds,
+          sellerAddresses,
+          info,
+          message,
+          signature,
+        },
+      });
+      if (error) { console.error('Failed to save shipping info:', error); return; }
+      setShippingInfoMap((prev) => {
+        const next = { ...prev };
+        orderIds.forEach((id) => { next[id] = info; });
+        return next;
+      });
+    } catch (e) {
+      console.error('Shipping save failed or was rejected:', e);
+    }
   };
 
   // Once the actual purchase transaction (buyMultiple) confirms, figure out which
@@ -536,9 +577,11 @@ export default function Ecommerce() {
     (async () => {
       const result = await refetchOrderCount();
       const newCount = result.data ? Number(result.data) : oCount;
-      const { startOrderCount, numItems, info } = pendingShippingSave;
+      const { startOrderCount, numItems, info, sellerAddresses } = pendingShippingSave;
       const newOrderIds = Array.from({ length: numItems }, (_, i) => startOrderCount + i + 1).filter((id) => id <= newCount);
-      await saveShippingInfoForOrders(newOrderIds, info);
+      const sellerMap: Record<number, string> = {};
+      newOrderIds.forEach((id, i) => { if (sellerAddresses[i]) sellerMap[id] = sellerAddresses[i]; });
+      await saveShippingInfoForOrders(newOrderIds, info, sellerMap);
       setPendingShippingSave(null);
       setAwaitingPurchaseTx(false);
     })();
@@ -862,7 +905,8 @@ export default function Ecommerce() {
   const confirmShippingAndBuy = () => {
     if (!shippingForm.fullName.trim() || !shippingForm.address.trim()) { alert('Please fill in at least your name and address'); return; }
     if (cart.length === 0 || !cartCurrency) return;
-    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length });
+    const sellerAddresses = cart.map((line) => getListingById(line.listingId)?.seller || '');
+    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length, sellerAddresses });
     proceedToCheckout(cart, cartCurrency);
     setCart([]);
     setCartCurrency(null);
@@ -1032,13 +1076,15 @@ export default function Ecommerce() {
             {(Number(listing.price) / 1e18).toString()} {symbol}
           </span>
 
-          {shipInfo && (
+          {shipInfo ? (
             <div className={`mb-4 p-3 rounded-xl text-xs ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder}`}>
               <p className={`${subtleText} uppercase tracking-wide text-[10px] mb-1 font-semibold`}>Ship to</p>
               <p className="font-medium">{shipInfo.fullName}</p>
               <p className={subtleText}>{shipInfo.address}, {shipInfo.city}, {shipInfo.country}</p>
               {shipInfo.phone && <p className={subtleText}>{shipInfo.phone}</p>}
             </div>
+          ) : context === 'seller' && (
+            <p className={`mb-4 text-xs ${subtleText}`}>Tap "Unlock Shipping Info" above to view the buyer's address.</p>
           )}
 
           {!order.cancelled && (
@@ -1509,7 +1555,14 @@ export default function Ecommerce() {
                 )}
 
                 <div>
-                  <h3 className="font-semibold text-lg mb-4">Orders to Fulfill</h3>
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <h3 className="font-semibold text-lg">Orders to Fulfill</h3>
+                    {myOrdersToFulfill.length > 0 && !sellerShipAuth && (
+                      <button onClick={unlockSellerShipping} disabled={unlockingShipInfo} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
+                        {unlockingShipInfo ? 'Confirm in wallet...' : '🔒 Unlock Shipping Info'}
+                      </button>
+                    )}
+                  </div>
                   {myOrdersToFulfill.length === 0 ? (
                     <p className={subtleText}>No orders yet.</p>
                   ) : (
