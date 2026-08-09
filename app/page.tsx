@@ -655,10 +655,28 @@ export default function Ecommerce() {
   const ensureChatSessionAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
     if (!address) return null;
     if (chatReadAuth && chatReadAuth.address.toLowerCase() === address.toLowerCase()) return chatReadAuth;
+
+    // Check for a previously-signed session first, so a page refresh never
+    // needs to ask for a new signature - only the very first time ever, on
+    // this browser, for this wallet.
+    const cacheKey = `openspace_chat_session_${address.toLowerCase()}`;
     const sessionMessage = `OpenSpace chat session | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      try {
+        const cached = JSON.parse(cachedRaw);
+        if (cached.message === sessionMessage && cached.signature) {
+          const auth = { address, message: cached.message, signature: cached.signature };
+          setChatReadAuth(auth);
+          return auth;
+        }
+      } catch (e) {}
+    }
+
     const sessionSignature = await signMessageAsync({ message: sessionMessage });
     const auth = { address, message: sessionMessage, signature: sessionSignature };
     setChatReadAuth(auth);
+    localStorage.setItem(cacheKey, JSON.stringify({ message: sessionMessage, signature: sessionSignature }));
     return auth;
   };
 
@@ -686,9 +704,13 @@ export default function Ecommerce() {
       });
       const alreadyMatches = existing?.data?.[0]?.public_key === myPubHex;
       if (!alreadyMatches) {
-        await supabase.functions.invoke('dispute-chat', {
+        const { error: regError } = await supabase.functions.invoke('dispute-chat', {
           body: { action: 'registerKey', walletAddress: address, contractAddress: MARKETPLACE_ADDRESS, publicKey: myPubHex, message: auth.message, signature: auth.signature },
         });
+        // Only remember this as "done" if it actually succeeded - otherwise
+        // we'd silently never retry, and nobody could ever message this
+        // person even though everything looked fine on their end.
+        if (regError) { console.error('Failed to register chat key:', regError); return { publicKey: kp.publicKey, secretKey: kp.secretKey }; }
       }
       chatKeyRegisteredRef.current = myPubHex;
     }
@@ -1446,7 +1468,9 @@ export default function Ecommerce() {
         )}
 
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
-          <OpenSpaceLogo className="h-12 sm:h-16 w-auto shrink-0" />
+          <button onClick={() => { setActiveTab('shop'); setQuickViewId(null); setMenuOpen(false); }} className="shrink-0" aria-label="Go to homepage">
+            <OpenSpaceLogo className="h-12 sm:h-16 w-auto" />
+          </button>
 
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative">
