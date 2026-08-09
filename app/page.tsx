@@ -8,6 +8,7 @@ import { formatEther, parseEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
 import { supabase } from './supabaseClient';
+import nacl from 'tweetnacl';
 
 const SHIPPING_LABELS = ['Processing', 'Shipped', 'Delivered'];
 const FALLBACK_IMAGE = 'https://placehold.co/400x400/e2e8f0/94a3b8?text=No+Image';
@@ -41,6 +42,9 @@ const VIEW_CURRENCIES: Record<string, { label: string; address: string | null; s
 
 type ShippingInfo = { fullName: string; address: string; city: string; country: string; phone: string };
 const emptyShipping: ShippingInfo = { fullName: '', address: '', city: '', country: '', phone: '' };
+
+type ChatMessage = { id: number; fromAddress: string; toAddress: string; text: string; createdAt: string };
+type EvidenceItem = { id: number; submittedBy: string; imageUrl: string | null; note: string | null; createdAt: string };
 
 type Listing = {
   id: number; name: string; imageUrl: string; category: string; price: bigint;
@@ -198,6 +202,20 @@ export default function Ecommerce() {
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
   const [walletSetupTimedOut, setWalletSetupTimedOut] = useState(false);
   const [shippingInfoMap, setShippingInfoMap] = useState<Record<number, ShippingInfo>>({});
+  const [chatModalOrderId, setChatModalOrderId] = useState<number | null>(null);
+  const [chatMessagesMap, setChatMessagesMap] = useState<Record<number, ChatMessage[]>>({});
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatReadAuth, setChatReadAuth] = useState<{ address: string; message: string; signature: string } | null>(null);
+  const [evidenceModalOrderId, setEvidenceModalOrderId] = useState<number | null>(null);
+  const [evidenceMap, setEvidenceMap] = useState<Record<number, EvidenceItem[]>>({});
+  const [evidenceNote, setEvidenceNote] = useState('');
+  const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
+  const [evidenceUploading, setEvidenceUploading] = useState(false);
+  const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
+  const [evidenceReadAuth, setEvidenceReadAuth] = useState<{ address: string; message: string; signature: string } | null>(null);
+  const [isModeratorState, setIsModeratorState] = useState(false);
   const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
 
@@ -610,6 +628,221 @@ export default function Ecommerce() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txConfirmed, awaitingPurchaseTx]);
+
+  // ---------- ENCRYPTED CHAT + DISPUTE EVIDENCE ----------
+  // Chat messages are scrambled in the browser before they're ever sent
+  // anywhere, using a key derived from a signed message - so only the
+  // buyer and seller on an order can ever read their own conversation, not
+  // even us. Dispute evidence works differently on purpose: it's NOT
+  // encrypted, since it's meant to be reviewed by admin/moderators once a
+  // dispute is actually raised.
+  const chatKeyPairRef = useRef<{ publicKey: Uint8Array; secretKey: Uint8Array; address: string } | null>(null);
+  const chatKeyRegisteredRef = useRef<string | null>(null);
+
+  function hexToBytesLocal(hex: string): Uint8Array {
+    const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
+    const bytes = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+    return bytes;
+  }
+  function bytesToHexLocal(bytes: Uint8Array): string {
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  const ensureChatKeyPair = async (): Promise<{ publicKey: Uint8Array; secretKey: Uint8Array } | null> => {
+    if (!address) return null;
+    if (chatKeyPairRef.current && chatKeyPairRef.current.address.toLowerCase() === address.toLowerCase()) {
+      return chatKeyPairRef.current;
+    }
+    const keyMessage = `OpenSpace chat encryption key v1 | ${address.toLowerCase()}`;
+    const keySignature = await signMessageAsync({ message: keyMessage });
+    const sigBytes = hexToBytesLocal(keySignature);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes as BufferSource);
+    const seed = new Uint8Array(hashBuffer);
+    const kp = nacl.box.keyPair.fromSecretKey(seed);
+    chatKeyPairRef.current = { publicKey: kp.publicKey, secretKey: kp.secretKey, address };
+
+    // Only register with the server if this exact key hasn't been registered
+    // yet this session (avoids asking for a second signature every time).
+    const myPubHex = bytesToHexLocal(kp.publicKey);
+    if (chatKeyRegisteredRef.current !== myPubHex) {
+      const { data: existing } = await supabase.functions.invoke('dispute-chat', {
+        body: { action: 'getKeys', addresses: [address] },
+      });
+      const alreadyMatches = existing?.data?.[0]?.public_key === myPubHex;
+      if (!alreadyMatches) {
+        const regMessage = `OpenSpace chat key register | address:${address.toLowerCase()}`;
+        const regSignature = await signMessageAsync({ message: regMessage });
+        await supabase.functions.invoke('dispute-chat', {
+          body: { action: 'registerKey', address, publicKey: myPubHex, message: regMessage, signature: regSignature },
+        });
+      }
+      chatKeyRegisteredRef.current = myPubHex;
+    }
+    return { publicKey: kp.publicKey, secretKey: kp.secretKey };
+  };
+
+  const fetchTheirPublicKey = async (theirAddress: string): Promise<Uint8Array | null> => {
+    const { data } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'getKeys', addresses: [theirAddress] },
+    });
+    const hex = data?.data?.[0]?.public_key;
+    return hex ? hexToBytesLocal(hex) : null;
+  };
+
+  const ensureChatReadAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
+    if (!address) return null;
+    if (chatReadAuth && chatReadAuth.address.toLowerCase() === address.toLowerCase()) return chatReadAuth;
+    const readMessage = `OpenSpace chat read | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
+    const readSignature = await signMessageAsync({ message: readMessage });
+    const auth = { address, message: readMessage, signature: readSignature };
+    setChatReadAuth(auth);
+    return auth;
+  };
+
+  const loadChatMessages = async (orderId: number) => {
+    if (!address) return;
+    setChatLoading(true);
+    try {
+      const myKeys = await ensureChatKeyPair();
+      const auth = await ensureChatReadAuth();
+      if (!myKeys || !auth) return;
+      const { data, error } = await supabase.functions.invoke('dispute-chat', {
+        body: { action: 'getMessages', contractAddress: MARKETPLACE_ADDRESS, orderId, requesterAddress: address, message: auth.message, signature: auth.signature },
+      });
+      if (error) { console.error('Failed to load chat:', error); return; }
+      const rows = data?.data || [];
+      const decrypted: ChatMessage[] = [];
+      for (const row of rows) {
+        const otherAddress = row.from_address.toLowerCase() === address.toLowerCase() ? row.to_address : row.from_address;
+        const theirPub = await fetchTheirPublicKey(otherAddress);
+        if (!theirPub) continue;
+        const nonceBytes = hexToBytesLocal(row.nonce);
+        const cipherBytes = hexToBytesLocal(row.ciphertext);
+        const opened = nacl.box.open(cipherBytes, nonceBytes, theirPub, myKeys.secretKey);
+        if (!opened) continue;
+        decrypted.push({
+          id: row.id,
+          fromAddress: row.from_address,
+          toAddress: row.to_address,
+          text: new TextDecoder().decode(opened),
+          createdAt: row.created_at,
+        });
+      }
+      setChatMessagesMap((prev) => ({ ...prev, [orderId]: decrypted }));
+    } catch (e) {
+      console.error('Failed to load chat:', e);
+    }
+    setChatLoading(false);
+  };
+
+  const sendChatMessage = async (orderId: number, toAddress: string) => {
+    if (!address || !chatInput.trim()) return;
+    setChatSending(true);
+    try {
+      const myKeys = await ensureChatKeyPair();
+      if (!myKeys) return;
+      const theirPub = await fetchTheirPublicKey(toAddress);
+      if (!theirPub) { alert("The other person hasn't set up chat yet - ask them to open this order's chat once first."); setChatSending(false); return; }
+
+      const nonce = nacl.randomBytes(24);
+      const plaintext = new TextEncoder().encode(chatInput.trim());
+      const cipher = nacl.box(plaintext, nonce, theirPub, myKeys.secretKey);
+      const ciphertextHex = bytesToHexLocal(cipher);
+      const nonceHex = bytesToHexLocal(nonce);
+
+      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ciphertextHex));
+      const shortHashHex = bytesToHexLocal(new Uint8Array(hashBuffer)).slice(0, 16);
+      const sendMessageText = `OpenSpace chat send | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | order:${orderId} | from:${address.toLowerCase()} | to:${toAddress.toLowerCase()} | msg:${shortHashHex}`;
+      const sendSignature = await signMessageAsync({ message: sendMessageText });
+
+      const { error } = await supabase.functions.invoke('dispute-chat', {
+        body: { action: 'sendMessage', contractAddress: MARKETPLACE_ADDRESS, orderId, fromAddress: address, toAddress, ciphertext: ciphertextHex, nonce: nonceHex, message: sendMessageText, signature: sendSignature },
+      });
+      if (error) { console.error('Failed to send message:', error); return; }
+      setChatInput('');
+      await loadChatMessages(orderId);
+    } catch (e) {
+      console.error('Failed to send message:', e);
+    }
+    setChatSending(false);
+  };
+
+  const ensureEvidenceReadAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
+    if (!address) return null;
+    if (evidenceReadAuth && evidenceReadAuth.address.toLowerCase() === address.toLowerCase()) return evidenceReadAuth;
+    const readMessage = `OpenSpace evidence read | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
+    const readSignature = await signMessageAsync({ message: readMessage });
+    const auth = { address, message: readMessage, signature: readSignature };
+    setEvidenceReadAuth(auth);
+    return auth;
+  };
+
+  const loadEvidence = async (orderId: number) => {
+    if (!address) return;
+    const auth = await ensureEvidenceReadAuth();
+    if (!auth) return;
+    const { data, error } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'getEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, requesterAddress: address, message: auth.message, signature: auth.signature },
+    });
+    if (error) { console.error('Failed to load evidence:', error); return; }
+    const rows = data?.data || [];
+    setEvidenceMap((prev) => ({
+      ...prev,
+      [orderId]: rows.map((r: any) => ({ id: r.id, submittedBy: r.submitted_by, imageUrl: r.image_url, note: r.note, createdAt: r.created_at })),
+    }));
+  };
+
+  const submitEvidence = async (orderId: number) => {
+    if (!address) return;
+    if (!evidenceImageUrl.trim() && !evidenceNote.trim()) { alert('Add a photo or a note before submitting.'); return; }
+    setEvidenceSubmitting(true);
+    try {
+      const submitMessage = `OpenSpace evidence submit | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | order:${orderId} | by:${address.toLowerCase()}`;
+      const submitSignature = await signMessageAsync({ message: submitMessage });
+      const { error } = await supabase.functions.invoke('dispute-chat', {
+        body: { action: 'submitEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, submittedBy: address, imageUrl: evidenceImageUrl.trim(), note: evidenceNote.trim(), message: submitMessage, signature: submitSignature },
+      });
+      if (error) { console.error('Failed to submit evidence:', error); return; }
+      setEvidenceNote('');
+      setEvidenceImageUrl('');
+      await loadEvidence(orderId);
+    } catch (e) {
+      console.error('Failed to submit evidence:', e);
+    }
+    setEvidenceSubmitting(false);
+  };
+
+  const handleEvidenceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEvidenceUploading(true);
+    try {
+      const url = await uploadImageToCloudinary(file);
+      setEvidenceImageUrl(url);
+    } catch (err) {
+      alert('Image upload failed. Please try again.');
+    }
+    setEvidenceUploading(false);
+    e.target.value = '';
+  };
+
+  const checkIfModerator = async () => {
+    if (!address) return false;
+    try {
+      const checkMessage = `OpenSpace moderator check | address:${address.toLowerCase()}`;
+      const checkSignature = await signMessageAsync({ message: checkMessage });
+      const { data } = await supabase.functions.invoke('dispute-chat', {
+        body: { action: 'checkModerator', address, message: checkMessage, signature: checkSignature },
+      });
+      const result = !!data?.isModerator;
+      setIsModeratorState(result);
+      return result;
+    } catch (e) {
+      console.error('Moderator check failed:', e);
+      return false;
+    }
+  };
 
   const quickViewListing = quickViewId ? getListingById(quickViewId) ?? null : null;
 
@@ -1124,6 +1357,24 @@ export default function Ecommerce() {
                 </button>
               )}
             </div>
+          )}
+
+          {(isBuyer || isSeller) && (
+            <button
+              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatModalOrderId(order.id); loadChatMessages(order.id); }}
+              className={`w-full mb-2 py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
+            >
+              💬 Message {isBuyer ? 'Seller' : 'Buyer'}
+            </button>
+          )}
+
+          {order.disputed && (isBuyer || isSeller) && (
+            <button
+              onClick={() => { setEvidenceModalOrderId(order.id); loadEvidence(order.id); }}
+              className="w-full mb-4 py-2 text-sm font-medium border border-amber-400/40 text-amber-600 rounded-xl hover:bg-amber-400/10 transition-colors"
+            >
+              📋 Dispute Evidence
+            </button>
           )}
 
           {statusOrActions()}
@@ -2058,6 +2309,109 @@ export default function Ecommerce() {
           </div>
         </div>
       )}
+
+      {chatModalOrderId !== null && (() => {
+        const order = allOrders.find((o) => o.id === chatModalOrderId);
+        const listing = order ? getListingById(order.listingId) : null;
+        if (!order || !listing) return null;
+        const isBuyerHere = address?.toLowerCase() === order.buyer.toLowerCase();
+        const otherParty = isBuyerHere ? listing.seller : order.buyer;
+        const messages = chatMessagesMap[chatModalOrderId] || [];
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setChatModalOrderId(null)}>
+            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] flex flex-col`} onClick={(e) => e.stopPropagation()}>
+              <div className={`px-6 py-4 border-b ${cardBorder} flex items-center justify-between`}>
+                <div>
+                  <h3 className="font-semibold text-lg">{listing.name}</h3>
+                  <p className={`text-xs ${subtleText} font-mono`}>{isBuyerHere ? 'Seller' : 'Buyer'}: {otherParty.slice(0, 6)}...{otherParty.slice(-4)}</p>
+                </div>
+                <button onClick={() => setChatModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                {chatLoading ? (
+                  <p className={`text-sm ${subtleText} text-center py-8`}>Decrypting messages...</p>
+                ) : messages.length === 0 ? (
+                  <p className={`text-sm ${subtleText} text-center py-8`}>No messages yet. Say hello 👋</p>
+                ) : (
+                  messages.map((m) => {
+                    const mine = m.fromAddress.toLowerCase() === address?.toLowerCase();
+                    return (
+                      <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm ${mine ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'bg-white/10' : 'bg-zinc-100'}`}`}>
+                          {m.text}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className={`px-6 py-4 border-t ${cardBorder} flex gap-2`}>
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !chatSending) sendChatMessage(chatModalOrderId, otherParty); }}
+                  placeholder="Type a message..."
+                  className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`}
+                />
+                <button onClick={() => sendChatMessage(chatModalOrderId, otherParty)} disabled={chatSending || !chatInput.trim()} className="px-4 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl font-semibold text-sm disabled:opacity-50 shrink-0">
+                  {chatSending ? '...' : 'Send'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {evidenceModalOrderId !== null && (() => {
+        const order = allOrders.find((o) => o.id === evidenceModalOrderId);
+        const listing = order ? getListingById(order.listingId) : null;
+        if (!order || !listing) return null;
+        const items = evidenceMap[evidenceModalOrderId] || [];
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setEvidenceModalOrderId(null)}>
+            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+              <div className="px-6 py-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-lg">Dispute Evidence</h3>
+                  <p className={`text-xs ${subtleText}`}>{listing.name} — visible to both parties and support staff reviewing this case.</p>
+                </div>
+                <button onClick={() => setEvidenceModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
+              </div>
+              <div className="px-6 space-y-3 mb-4">
+                {items.length === 0 ? (
+                  <p className={`text-sm ${subtleText} py-2`}>No evidence submitted yet.</p>
+                ) : (
+                  items.map((item) => (
+                    <div key={item.id} className={`p-3 rounded-xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>
+                      <p className={`text-[10px] ${subtleText} font-mono mb-2`}>{item.submittedBy.slice(0, 6)}...{item.submittedBy.slice(-4)}</p>
+                      {item.imageUrl && <img src={item.imageUrl} alt="Evidence" className="w-full rounded-lg mb-2 max-h-64 object-cover" />}
+                      {item.note && <p className="text-sm">{item.note}</p>}
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className={`px-6 pb-6 pt-2 border-t ${cardBorder} space-y-2`}>
+                <label className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                  {evidenceUploading ? 'Uploading...' : '📷 Upload Photo'}
+                  <input type="file" accept="image/*" className="hidden" disabled={evidenceUploading} onChange={handleEvidenceImageUpload} />
+                </label>
+                {evidenceImageUrl && (<img src={evidenceImageUrl} alt="Preview" className="w-20 h-20 rounded-lg object-cover border border-zinc-300/30" />)}
+                <textarea
+                  value={evidenceNote}
+                  onChange={(e) => setEvidenceNote(e.target.value)}
+                  placeholder="Add a note explaining what happened (optional if you're attaching a photo)"
+                  rows={3}
+                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm resize-none`}
+                />
+                <button onClick={() => submitEvidence(evidenceModalOrderId)} disabled={evidenceSubmitting} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl font-semibold text-sm disabled:opacity-50">
+                  {evidenceSubmitting ? 'Confirm in wallet...' : 'Submit Evidence'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {disputeCenterOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
