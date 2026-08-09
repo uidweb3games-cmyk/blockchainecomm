@@ -9,7 +9,7 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { recoverMessageAddress } from "https://esm.sh/viem@2";
+import { verifyMessage } from "https://esm.sh/ethers@6.13.4";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,7 +38,7 @@ serve(async (req) => {
     // Recover the wallet address that actually produced this signature.
     // This is pure cryptography - no blockchain call needed - so it's free
     // and instant, and it can't be faked without the real private key.
-    const recovered = await recoverMessageAddress({ message, signature });
+    const recovered = verifyMessage(message, signature);
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     if (action === "save") {
@@ -94,6 +94,7 @@ serve(async (req) => {
 
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
+    console.error("shipping-info error:", e);
     return json({ error: String(e) }, 500);
   }
 });
