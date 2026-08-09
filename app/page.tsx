@@ -16,6 +16,8 @@ const ALL_KEY = 'ALL';
 const ALL_CATEGORIES = 'All Categories';
 const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
+const ACTIVE_TAB_KEY = 'openspace_active_tab';
+const PURCHASES_OPEN_KEY = 'openspace_purchases_open';
 const NO_VARIANT = '';
 
 const CATEGORIES = ['Electronics', 'Gadget', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
@@ -291,7 +293,28 @@ export default function Ecommerce() {
     setMounted(true);
     const seen = localStorage.getItem(ONBOARDING_SEEN_KEY);
     if (!seen) { setHelpModalOpen(true); localStorage.setItem(ONBOARDING_SEEN_KEY, 'true'); }
+    const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+    if (savedTab === 'shop' || savedTab === 'sell' || savedTab === 'analytics') {
+      setActiveTab(savedTab);
+    }
+    if (localStorage.getItem(PURCHASES_OPEN_KEY) === 'true') {
+      setPurchasesOpen(true);
+    }
   }, []);
+
+  // Remember whichever tab (Buy / Sell / Analytics) the person is on, so a
+  // page refresh keeps them there instead of always resetting to the shop.
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
+  }, [activeTab, mounted]);
+
+  // Same idea for the My Purchases view specifically, since it's a common
+  // place people refresh from while tracking a shipment.
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem(PURCHASES_OPEN_KEY, purchasesOpen ? 'true' : 'false');
+  }, [purchasesOpen, mounted]);
 
   const { disconnect } = useDisconnect();
   const { writeContract, isPending, data: txHash } = useWriteContract();

@@ -9,7 +9,8 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyMessage } from "https://esm.sh/ethers@6.13.4";
+import { secp256k1 } from "https://esm.sh/@noble/curves@1.4.0/secp256k1";
+import { keccak_256 } from "https://esm.sh/@noble/hashes@1.4.0/sha3";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -26,6 +27,33 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// --- Minimal, dependency-free wallet signature verification ---
+// (@noble/curves and @noble/hashes are pure TypeScript with zero native
+// add-ons, unlike ethers/viem's fuller packages - this avoids the
+// bufferutil/utf-8-validate crash entirely, since those modules are never
+// pulled in at all.)
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+  return bytes;
+}
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function recoverEthAddress(message: string, signatureHex: string): string {
+  const prefixed = `\x19Ethereum Signed Message:\n${message.length}${message}`;
+  const msgHash = keccak_256(new TextEncoder().encode(prefixed));
+  const sigBytes = hexToBytes(signatureHex);
+  const rs = sigBytes.slice(0, 64);
+  let v = sigBytes[64];
+  if (v >= 27) v -= 27;
+  const sig = secp256k1.Signature.fromCompact(rs).addRecoveryBit(v);
+  const pubKey = sig.recoverPublicKey(msgHash).toRawBytes(false); // uncompressed, 0x04 prefix
+  const addrHash = keccak_256(pubKey.slice(1));
+  return "0x" + bytesToHex(addrHash.slice(-20));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -38,7 +66,7 @@ serve(async (req) => {
     // Recover the wallet address that actually produced this signature.
     // This is pure cryptography - no blockchain call needed - so it's free
     // and instant, and it can't be faked without the real private key.
-    const recovered = verifyMessage(message, signature);
+    const recovered = recoverEthAddress(message, signature);
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     if (action === "save") {
