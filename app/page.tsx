@@ -214,7 +214,6 @@ export default function Ecommerce() {
   const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
   const [evidenceUploading, setEvidenceUploading] = useState(false);
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
-  const [evidenceReadAuth, setEvidenceReadAuth] = useState<{ address: string; message: string; signature: string } | null>(null);
   const [isModeratorState, setIsModeratorState] = useState(false);
   const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
@@ -636,6 +635,10 @@ export default function Ecommerce() {
   // even us. Dispute evidence works differently on purpose: it's NOT
   // encrypted, since it's meant to be reviewed by admin/moderators once a
   // dispute is actually raised.
+  //
+  // ONE signed "session" message covers everything below - setting up your
+  // key, reading, sending, and evidence - reused for the rest of the visit
+  // instead of asking for a fresh signature every single step.
   const chatKeyPairRef = useRef<{ publicKey: Uint8Array; secretKey: Uint8Array; address: string } | null>(null);
   const chatKeyRegisteredRef = useRef<string | null>(null);
 
@@ -649,21 +652,33 @@ export default function Ecommerce() {
     return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
+  const ensureChatSessionAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
+    if (!address) return null;
+    if (chatReadAuth && chatReadAuth.address.toLowerCase() === address.toLowerCase()) return chatReadAuth;
+    const sessionMessage = `OpenSpace chat session | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
+    const sessionSignature = await signMessageAsync({ message: sessionMessage });
+    const auth = { address, message: sessionMessage, signature: sessionSignature };
+    setChatReadAuth(auth);
+    return auth;
+  };
+
   const ensureChatKeyPair = async (): Promise<{ publicKey: Uint8Array; secretKey: Uint8Array } | null> => {
     if (!address) return null;
     if (chatKeyPairRef.current && chatKeyPairRef.current.address.toLowerCase() === address.toLowerCase()) {
       return chatKeyPairRef.current;
     }
-    const keyMessage = `OpenSpace chat encryption key v1 | ${address.toLowerCase()}`;
-    const keySignature = await signMessageAsync({ message: keyMessage });
-    const sigBytes = hexToBytesLocal(keySignature);
+    const auth = await ensureChatSessionAuth();
+    if (!auth) return null;
+
+    // The seed comes from hashing the session signature itself, so the same
+    // key is derived deterministically every time without a separate
+    // signature just for key derivation.
+    const sigBytes = hexToBytesLocal(auth.signature);
     const hashBuffer = await crypto.subtle.digest('SHA-256', sigBytes as BufferSource);
     const seed = new Uint8Array(hashBuffer);
     const kp = nacl.box.keyPair.fromSecretKey(seed);
     chatKeyPairRef.current = { publicKey: kp.publicKey, secretKey: kp.secretKey, address };
 
-    // Only register with the server if this exact key hasn't been registered
-    // yet this session (avoids asking for a second signature every time).
     const myPubHex = bytesToHexLocal(kp.publicKey);
     if (chatKeyRegisteredRef.current !== myPubHex) {
       const { data: existing } = await supabase.functions.invoke('dispute-chat', {
@@ -671,10 +686,8 @@ export default function Ecommerce() {
       });
       const alreadyMatches = existing?.data?.[0]?.public_key === myPubHex;
       if (!alreadyMatches) {
-        const regMessage = `OpenSpace chat key register | address:${address.toLowerCase()}`;
-        const regSignature = await signMessageAsync({ message: regMessage });
         await supabase.functions.invoke('dispute-chat', {
-          body: { action: 'registerKey', address, publicKey: myPubHex, message: regMessage, signature: regSignature },
+          body: { action: 'registerKey', walletAddress: address, contractAddress: MARKETPLACE_ADDRESS, publicKey: myPubHex, message: auth.message, signature: auth.signature },
         });
       }
       chatKeyRegisteredRef.current = myPubHex;
@@ -690,25 +703,15 @@ export default function Ecommerce() {
     return hex ? hexToBytesLocal(hex) : null;
   };
 
-  const ensureChatReadAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
-    if (!address) return null;
-    if (chatReadAuth && chatReadAuth.address.toLowerCase() === address.toLowerCase()) return chatReadAuth;
-    const readMessage = `OpenSpace chat read | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
-    const readSignature = await signMessageAsync({ message: readMessage });
-    const auth = { address, message: readMessage, signature: readSignature };
-    setChatReadAuth(auth);
-    return auth;
-  };
-
   const loadChatMessages = async (orderId: number) => {
     if (!address) return;
     setChatLoading(true);
     try {
       const myKeys = await ensureChatKeyPair();
-      const auth = await ensureChatReadAuth();
+      const auth = await ensureChatSessionAuth();
       if (!myKeys || !auth) return;
       const { data, error } = await supabase.functions.invoke('dispute-chat', {
-        body: { action: 'getMessages', contractAddress: MARKETPLACE_ADDRESS, orderId, requesterAddress: address, message: auth.message, signature: auth.signature },
+        body: { action: 'getMessages', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, message: auth.message, signature: auth.signature },
       });
       if (error) { console.error('Failed to load chat:', error); return; }
       const rows = data?.data || [];
@@ -739,11 +742,13 @@ export default function Ecommerce() {
   const sendChatMessage = async (orderId: number, toAddress: string) => {
     if (!address || !chatInput.trim()) return;
     setChatSending(true);
+    setChatUnavailable(null);
     try {
       const myKeys = await ensureChatKeyPair();
-      if (!myKeys) return;
+      const auth = await ensureChatSessionAuth();
+      if (!myKeys || !auth) return;
       const theirPub = await fetchTheirPublicKey(toAddress);
-      if (!theirPub) { alert("The other person hasn't set up chat yet - ask them to open this order's chat once first."); setChatSending(false); return; }
+      if (!theirPub) { setChatUnavailable(orderId); setChatSending(false); return; }
 
       const nonce = nacl.randomBytes(24);
       const plaintext = new TextEncoder().encode(chatInput.trim());
@@ -751,13 +756,8 @@ export default function Ecommerce() {
       const ciphertextHex = bytesToHexLocal(cipher);
       const nonceHex = bytesToHexLocal(nonce);
 
-      const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ciphertextHex));
-      const shortHashHex = bytesToHexLocal(new Uint8Array(hashBuffer)).slice(0, 16);
-      const sendMessageText = `OpenSpace chat send | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | order:${orderId} | from:${address.toLowerCase()} | to:${toAddress.toLowerCase()} | msg:${shortHashHex}`;
-      const sendSignature = await signMessageAsync({ message: sendMessageText });
-
       const { error } = await supabase.functions.invoke('dispute-chat', {
-        body: { action: 'sendMessage', contractAddress: MARKETPLACE_ADDRESS, orderId, fromAddress: address, toAddress, ciphertext: ciphertextHex, nonce: nonceHex, message: sendMessageText, signature: sendSignature },
+        body: { action: 'sendMessage', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, toAddress, ciphertext: ciphertextHex, nonce: nonceHex, message: auth.message, signature: auth.signature },
       });
       if (error) { console.error('Failed to send message:', error); return; }
       setChatInput('');
@@ -768,22 +768,12 @@ export default function Ecommerce() {
     setChatSending(false);
   };
 
-  const ensureEvidenceReadAuth = async (): Promise<{ address: string; message: string; signature: string } | null> => {
-    if (!address) return null;
-    if (evidenceReadAuth && evidenceReadAuth.address.toLowerCase() === address.toLowerCase()) return evidenceReadAuth;
-    const readMessage = `OpenSpace evidence read | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | wallet:${address.toLowerCase()}`;
-    const readSignature = await signMessageAsync({ message: readMessage });
-    const auth = { address, message: readMessage, signature: readSignature };
-    setEvidenceReadAuth(auth);
-    return auth;
-  };
-
   const loadEvidence = async (orderId: number) => {
     if (!address) return;
-    const auth = await ensureEvidenceReadAuth();
+    const auth = await ensureChatSessionAuth();
     if (!auth) return;
     const { data, error } = await supabase.functions.invoke('dispute-chat', {
-      body: { action: 'getEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, requesterAddress: address, message: auth.message, signature: auth.signature },
+      body: { action: 'getEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, message: auth.message, signature: auth.signature },
     });
     if (error) { console.error('Failed to load evidence:', error); return; }
     const rows = data?.data || [];
@@ -798,10 +788,10 @@ export default function Ecommerce() {
     if (!evidenceImageUrl.trim() && !evidenceNote.trim()) { alert('Add a photo or a note before submitting.'); return; }
     setEvidenceSubmitting(true);
     try {
-      const submitMessage = `OpenSpace evidence submit | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | order:${orderId} | by:${address.toLowerCase()}`;
-      const submitSignature = await signMessageAsync({ message: submitMessage });
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
       const { error } = await supabase.functions.invoke('dispute-chat', {
-        body: { action: 'submitEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, submittedBy: address, imageUrl: evidenceImageUrl.trim(), note: evidenceNote.trim(), message: submitMessage, signature: submitSignature },
+        body: { action: 'submitEvidence', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, imageUrl: evidenceImageUrl.trim(), note: evidenceNote.trim(), message: auth.message, signature: auth.signature },
       });
       if (error) { console.error('Failed to submit evidence:', error); return; }
       setEvidenceNote('');
@@ -827,13 +817,33 @@ export default function Ecommerce() {
     e.target.value = '';
   };
 
+  const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
+
+  // Quietly set up a person's chat key the first time they check their own
+  // purchases or seller orders - both are things people naturally do anyway,
+  // so by the time someone tries to message them, their key usually already
+  // exists. If they reject the prompt, we just try again next time.
+  useEffect(() => {
+    if (purchasesOpen && address) {
+      ensureChatKeyPair().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchasesOpen, address]);
+
+  useEffect(() => {
+    if (activeTab === 'sell' && sellerProfile && address) {
+      ensureChatKeyPair().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, sellerProfile, address]);
+
   const checkIfModerator = async () => {
     if (!address) return false;
     try {
-      const checkMessage = `OpenSpace moderator check | address:${address.toLowerCase()}`;
-      const checkSignature = await signMessageAsync({ message: checkMessage });
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return false;
       const { data } = await supabase.functions.invoke('dispute-chat', {
-        body: { action: 'checkModerator', address, message: checkMessage, signature: checkSignature },
+        body: { action: 'checkModerator', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, message: auth.message, signature: auth.signature },
       });
       const result = !!data?.isModerator;
       setIsModeratorState(result);
@@ -1361,7 +1371,7 @@ export default function Ecommerce() {
 
           {(isBuyer || isSeller) && (
             <button
-              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatModalOrderId(order.id); loadChatMessages(order.id); }}
+              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatUnavailable(null); setChatModalOrderId(order.id); loadChatMessages(order.id); }}
               className={`w-full mb-2 py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
             >
               💬 Message {isBuyer ? 'Seller' : 'Buyer'}
@@ -2345,6 +2355,13 @@ export default function Ecommerce() {
                   })
                 )}
               </div>
+              {chatUnavailable === chatModalOrderId && (
+                <div className="px-6 pb-2">
+                  <p className={`text-xs ${subtleText} p-3 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder}`}>
+                    {isBuyerHere ? 'This seller' : 'This buyer'} hasn't opened their orders yet, so chat isn't ready on their end. Your message will be ready to send as soon as they check their orders - try again in a bit.
+                  </p>
+                </div>
+              )}
               <div className={`px-6 py-4 border-t ${cardBorder} flex gap-2`}>
                 <input
                   type="text"
