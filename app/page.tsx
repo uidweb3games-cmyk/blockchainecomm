@@ -216,6 +216,8 @@ export default function Ecommerce() {
   const [evidenceUploading, setEvidenceUploading] = useState(false);
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
   const [isModeratorState, setIsModeratorState] = useState(false);
+  const [caseStatusMap, setCaseStatusMap] = useState<Record<number, { claimedBy: string | null; note: string }>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
 
@@ -904,6 +906,45 @@ export default function Ecommerce() {
     }
   };
 
+  const loadCaseStatus = async (orderIds: number[]) => {
+    if (!address || orderIds.length === 0) return;
+    const auth = await ensureChatSessionAuth();
+    if (!auth) return;
+    const { data, error } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'getCaseStatus', contractAddress: MARKETPLACE_ADDRESS, orderIds, walletAddress: address, message: auth.message, signature: auth.signature },
+    });
+    if (error) { console.error('Failed to load case status:', error); return; }
+    const rows = data?.data || [];
+    setCaseStatusMap((prev) => {
+      const next = { ...prev };
+      rows.forEach((r: any) => { next[r.order_id] = { claimedBy: r.claimed_by, note: r.moderator_note || '' }; });
+      return next;
+    });
+  };
+
+  const toggleClaimCase = async (orderId: number) => {
+    if (!address) return;
+    const auth = await ensureChatSessionAuth();
+    if (!auth) return;
+    const { data, error } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'claimCase', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, message: auth.message, signature: auth.signature },
+    });
+    if (error) { console.error('Failed to claim case:', error); return; }
+    setCaseStatusMap((prev) => ({ ...prev, [orderId]: { claimedBy: data?.claimedBy ?? null, note: prev[orderId]?.note || '' } }));
+  };
+
+  const saveNote = async (orderId: number) => {
+    if (!address) return;
+    const auth = await ensureChatSessionAuth();
+    if (!auth) return;
+    const note = noteDrafts[orderId] ?? '';
+    const { error } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'setNote', contractAddress: MARKETPLACE_ADDRESS, orderId, note, walletAddress: address, message: auth.message, signature: auth.signature },
+    });
+    if (error) { console.error('Failed to save note:', error); return; }
+    setCaseStatusMap((prev) => ({ ...prev, [orderId]: { claimedBy: prev[orderId]?.claimedBy ?? null, note } }));
+  };
+
   const quickViewListing = quickViewId ? getListingById(quickViewId) ?? null : null;
 
   const qvVariantContracts = quickViewListing && quickViewListing.hasVariants
@@ -1506,7 +1547,7 @@ export default function Ecommerce() {
                         <button onClick={() => setDarkMode(!darkMode)} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>{darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
                         <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>❓ How to Test</button>
                         {isConnected && disputeEligible.length > 0 && (<button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚠ Open Dispute</button>)}
-                        {(isAdmin || isModeratorState) && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); disputedOrders.forEach((o) => loadEvidence(o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
+                        {(isAdmin || isModeratorState) && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); disputedOrders.forEach((o) => loadEvidence(o.id)); loadCaseStatus(disputedOrders.map((o) => o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
                         {!isAdmin && !isModeratorState && isConnected && (<button onClick={async () => { const result = await checkIfModerator(); if (!result) alert('This wallet is not registered as a support/moderator wallet.'); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium ${subtleText} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🔧 Check Support Access</button>)}
                         {isAdmin && (<button onClick={() => { openAdminSettings(); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Admin Settings</button>)}
                       </div>
@@ -2517,9 +2558,21 @@ export default function Ecommerce() {
                 disputedOrders.map((order) => {
                   const listing = getListingById(order.listingId);
                   const items = evidenceMap[order.id] || [];
+                  const status = caseStatusMap[order.id];
+                  const claimedByMe = status?.claimedBy?.toLowerCase() === address?.toLowerCase();
+                  const claimedBySomeoneElse = status?.claimedBy && !claimedByMe;
                   return (
                     <div key={order.id} className={`p-4 rounded-2xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>
-                      <p className="font-medium text-sm mb-1">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-medium text-sm">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
+                        <button
+                          onClick={() => toggleClaimCase(order.id)}
+                          disabled={!!claimedBySomeoneElse}
+                          className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${claimedByMe ? 'bg-lime-400/20 text-lime-600 border border-lime-400/40' : claimedBySomeoneElse ? `${subtleText} border ${cardBorder} cursor-not-allowed` : `border ${cardBorder} ${darkMode ? 'hover:bg-white/10' : 'hover:bg-white'}`}`}
+                        >
+                          {claimedByMe ? '✓ Claimed by you' : claimedBySomeoneElse ? `Claimed: ${status!.claimedBy!.slice(0, 6)}...${status!.claimedBy!.slice(-4)}` : 'Claim this case'}
+                        </button>
+                      </div>
                       <p className={`text-[11px] ${subtleText} font-mono mb-3`}>Buyer: {order.buyer.slice(0, 6)}...{order.buyer.slice(-4)} {listing && `· Seller: ${listing.seller.slice(0, 6)}...${listing.seller.slice(-4)}`}</p>
 
                       <div className="mb-3">
@@ -2537,6 +2590,18 @@ export default function Ecommerce() {
                             ))}
                           </div>
                         )}
+                      </div>
+
+                      <div className="mb-3">
+                        <p className={`text-[10px] uppercase tracking-wide font-semibold ${subtleText} mb-2`}>Moderator notes</p>
+                        <textarea
+                          value={noteDrafts[order.id] ?? status?.note ?? ''}
+                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                          onBlur={() => saveNote(order.id)}
+                          placeholder="Add a recommendation or note for the admin/other moderators..."
+                          rows={2}
+                          className={`w-full ${cardBg} border ${cardBorder} rounded-lg px-3 py-2 text-xs outline-none focus:border-lime-400 transition-colors resize-none`}
+                        />
                       </div>
 
                       {isAdmin ? (

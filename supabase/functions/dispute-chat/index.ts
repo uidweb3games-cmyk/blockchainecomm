@@ -192,6 +192,55 @@ serve(async (req) => {
       return json({ isModerator: await isModerator(walletAddress) });
     }
 
+    // ---------- Dispute case status: claimed-by + moderator notes ----------
+    if (action === "claimCase") {
+      if (!(await isModerator(walletAddress))) return json({ error: "Not authorized" }, 403);
+      const { orderId } = body;
+      const { data: existing } = await supabase
+        .from("dispute_case_status")
+        .select("claimed_by")
+        .eq("contract_address", String(contractAddress).toLowerCase())
+        .eq("order_id", orderId)
+        .maybeSingle();
+      // Toggle: claim if unclaimed, unclaim if you're the one who claimed it.
+      const newClaimedBy = !existing || !existing.claimed_by ? walletAddress.toLowerCase()
+        : existing.claimed_by === walletAddress.toLowerCase() ? null
+        : existing.claimed_by; // someone else already has it - leave as-is
+      const { error } = await supabase.from("dispute_case_status").upsert({
+        contract_address: String(contractAddress).toLowerCase(),
+        order_id: orderId,
+        claimed_by: newClaimedBy,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "contract_address,order_id" });
+      if (error) return json({ error: error.message }, 500);
+      return json({ success: true, claimedBy: newClaimedBy });
+    }
+
+    if (action === "setNote") {
+      if (!(await isModerator(walletAddress))) return json({ error: "Not authorized" }, 403);
+      const { orderId, note } = body;
+      const { error } = await supabase.from("dispute_case_status").upsert({
+        contract_address: String(contractAddress).toLowerCase(),
+        order_id: orderId,
+        moderator_note: note,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "contract_address,order_id" });
+      if (error) return json({ error: error.message }, 500);
+      return json({ success: true });
+    }
+
+    if (action === "getCaseStatus") {
+      if (!(await isModerator(walletAddress))) return json({ error: "Not authorized" }, 403);
+      const { orderIds } = body;
+      const { data, error } = await supabase
+        .from("dispute_case_status")
+        .select("order_id, claimed_by, moderator_note")
+        .eq("contract_address", String(contractAddress).toLowerCase())
+        .in("order_id", orderIds);
+      if (error) return json({ error: error.message }, 500);
+      return json({ data });
+    }
+
     return json({ error: "Unknown action" }, 400);
   } catch (e) {
     console.error("dispute-chat error:", e);
