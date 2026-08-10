@@ -96,10 +96,12 @@ serve(async (req) => {
       return data;
     }
     async function isModerator(addr: string) {
+      // Case-insensitive on purpose - addresses typed into the table
+      // manually might not always be lowercase, and this shouldn't matter.
       const { data } = await supabase
         .from("moderators")
         .select("wallet_address")
-        .eq("wallet_address", addr.toLowerCase())
+        .ilike("wallet_address", addr)
         .maybeSingle();
       return !!data;
     }
