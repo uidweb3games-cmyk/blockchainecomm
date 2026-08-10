@@ -1,4 +1,4 @@
-export const MARKETPLACE_ADDRESS = "0x50Ba3da6b2Af95C701f37c054232B0f4369aeCCF" as const;
+export const MARKETPLACE_ADDRESS = "0x46440C55102B7050de0E044FD043bace7124958e" as const;
 
 export const USDC_ADDRESS = "0x64544969ed7EBf5f083679233325356EbE738930" as const;
 export const USDT_ADDRESS = "0x337610d27c682E347C9cD60BD4b3b107C9d34dDd" as const;
@@ -41,6 +41,8 @@ export const MARKETPLACE_ABI = [
   { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_reason", "type": "string" }], "name": "adminDelistItem", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
   { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "uint256", "name": "listingId", "type": "uint256" }], "name": "AdminRemovedFromFeatured", "type": "event" },
   { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }], "name": "adminRemoveFromFeatured", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "newAdmin", "type": "address" }], "name": "AdminTransferred", "type": "event" },
+  { "inputs": [{ "internalType": "address", "name": "_newAdmin", "type": "address" }], "name": "transferAdmin", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
   { "inputs": [{ "internalType": "uint256", "name": "_orderId", "type": "uint256" }], "name": "autoRelease", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
   { "inputs": [{ "internalType": "uint256", "name": "_listingId", "type": "uint256" }, { "internalType": "string", "name": "_color", "type": "string" }, { "internalType": "string", "name": "_size", "type": "string" }], "name": "buyItem", "outputs": [], "stateMutability": "payable", "type": "function" },
   { "inputs": [{ "internalType": "uint256[]", "name": "_listingIds", "type": "uint256[]" }, { "internalType": "string[]", "name": "_colors", "type": "string[]" }, { "internalType": "string[]", "name": "_sizes", "type": "string[]" }, { "internalType": "address", "name": "_token", "type": "address" }], "name": "buyMultiple", "outputs": [], "stateMutability": "payable", "type": "function" },
