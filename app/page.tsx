@@ -1506,7 +1506,8 @@ export default function Ecommerce() {
                         <button onClick={() => setDarkMode(!darkMode)} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>{darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
                         <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>❓ How to Test</button>
                         {isConnected && disputeEligible.length > 0 && (<button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚠ Open Dispute</button>)}
-                        {isAdmin && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
+                        {(isAdmin || isModeratorState) && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); disputedOrders.forEach((o) => loadEvidence(o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
+                        {!isAdmin && !isModeratorState && isConnected && (<button onClick={async () => { const result = await checkIfModerator(); if (!result) alert('This wallet is not registered as a support/moderator wallet.'); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium ${subtleText} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🔧 Check Support Access</button>)}
                         {isAdmin && (<button onClick={() => { openAdminSettings(); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Admin Settings</button>)}
                       </div>
                       <div className={`border-t ${cardBorder} mt-2 pt-2`}>
@@ -2506,22 +2507,50 @@ export default function Ecommerce() {
 
       {resolveCenterOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
-            <h3 className="font-semibold text-lg mb-1">Resolve Disputes</h3>
-            <p className={`text-xs ${subtleText} mb-4`}>Review and settle each disputed trade.</p>
-            <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
-              {disputedOrders.map((order) => {
-                const listing = getListingById(order.listingId);
-                return (
-                  <div key={order.id} className={`p-3 rounded-xl border ${cardBorder}`}>
-                    <p className="font-medium text-sm mb-2">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
-                    <div className="flex gap-2">
-                      <button onClick={() => call('resolveDispute', [BigInt(order.id), true])} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
-                      <button onClick={() => call('resolveDispute', [BigInt(order.id), false])} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto`}>
+            <h3 className="font-semibold text-lg mb-1">Dispute Queue</h3>
+            <p className={`text-xs ${subtleText} mb-4`}>{disputedOrders.length} case{disputedOrders.length === 1 ? '' : 's'} awaiting a decision. Work through them one at a time.</p>
+            <div className="space-y-4 mb-4">
+              {disputedOrders.length === 0 ? (
+                <p className={`text-sm ${subtleText} py-4 text-center`}>No open disputes right now.</p>
+              ) : (
+                disputedOrders.map((order) => {
+                  const listing = getListingById(order.listingId);
+                  const items = evidenceMap[order.id] || [];
+                  return (
+                    <div key={order.id} className={`p-4 rounded-2xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>
+                      <p className="font-medium text-sm mb-1">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
+                      <p className={`text-[11px] ${subtleText} font-mono mb-3`}>Buyer: {order.buyer.slice(0, 6)}...{order.buyer.slice(-4)} {listing && `· Seller: ${listing.seller.slice(0, 6)}...${listing.seller.slice(-4)}`}</p>
+
+                      <div className="mb-3">
+                        <p className={`text-[10px] uppercase tracking-wide font-semibold ${subtleText} mb-2`}>Evidence submitted</p>
+                        {items.length === 0 ? (
+                          <p className={`text-xs ${subtleText}`}>Nothing submitted yet by either party.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {items.map((item) => (
+                              <div key={item.id} className={`p-2 rounded-xl border ${cardBorder} ${cardBg}`}>
+                                <p className={`text-[10px] ${subtleText} font-mono mb-1`}>{item.submittedBy.slice(0, 6)}...{item.submittedBy.slice(-4)}</p>
+                                {item.imageUrl && <img src={item.imageUrl} alt="Evidence" className="w-full rounded-lg mb-1 max-h-48 object-cover" />}
+                                {item.note && <p className="text-xs">{item.note}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {isAdmin ? (
+                        <div className="flex gap-2">
+                          <button onClick={() => call('resolveDispute', [BigInt(order.id), true])} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
+                          <button onClick={() => call('resolveDispute', [BigInt(order.id), false])} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
+                        </div>
+                      ) : (
+                        <p className={`text-[11px] ${subtleText} italic`}>You can review this case, but only the admin wallet can finalize a decision.</p>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
             <button onClick={() => setResolveCenterOpen(false)} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>Close</button>
           </div>
