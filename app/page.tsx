@@ -1558,7 +1558,7 @@ export default function Ecommerce() {
 
           {order.disputed && (isBuyer || isSeller) && (
             <button
-              onClick={() => { setEvidenceModalOrderId(order.id); loadEvidence(order.id); }}
+              onClick={() => { setEvidenceModalOrderId(order.id); loadEvidence(order.id); loadCaseStatus([order.id]); }}
               className="w-full mb-4 py-2 text-sm font-medium border border-amber-400/40 text-amber-600 rounded-xl hover:bg-amber-400/10 transition-colors"
             >
               📋 Dispute Evidence
@@ -2581,6 +2581,8 @@ export default function Ecommerce() {
         const listing = order ? getListingById(order.listingId) : null;
         if (!order || !listing) return null;
         const items = evidenceMap[evidenceModalOrderId] || [];
+        const status = caseStatusMap[evidenceModalOrderId];
+        const isResolved = order.released;
         return (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setEvidenceModalOrderId(null)}>
             <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
@@ -2591,6 +2593,20 @@ export default function Ecommerce() {
                 </div>
                 <button onClick={() => setEvidenceModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
               </div>
+
+              {isResolved && (
+                <div className="px-6 mb-3">
+                  <div className={`p-3 rounded-xl border border-lime-400/40 bg-lime-400/10`}>
+                    <p className="text-xs font-semibold text-lime-600 mb-1">✓ This dispute has been resolved</p>
+                    {status?.note?.trim() ? (
+                      <p className="text-sm">{status.note}</p>
+                    ) : (
+                      <p className={`text-xs ${subtleText}`}>No note was left explaining the decision.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="px-6 space-y-3 mb-4">
                 {items.length === 0 ? (
                   <p className={`text-sm ${subtleText} py-2`}>No evidence submitted yet.</p>

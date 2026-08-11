@@ -252,13 +252,23 @@ serve(async (req) => {
     }
 
     if (action === "getCaseStatus") {
-      if (!(await isModerator(walletAddress))) return json({ error: "Not authorized" }, 403);
       const { orderIds } = body;
+      const modApproved = await isModerator(walletAddress);
+      const allowedOrderIds: number[] = [];
+      for (const oid of orderIds as number[]) {
+        if (modApproved) { allowedOrderIds.push(oid); continue; }
+        const parties = await getOrderParties(oid);
+        if (parties) {
+          const pair = [parties.buyer_address, parties.seller_address].map((a) => a.toLowerCase());
+          if (pair.includes(walletAddress.toLowerCase())) allowedOrderIds.push(oid);
+        }
+      }
+      if (allowedOrderIds.length === 0) return json({ data: [] });
       const { data, error } = await supabase
         .from("dispute_case_status")
         .select("order_id, claimed_by, moderator_note")
         .eq("contract_address", String(contractAddress).toLowerCase())
-        .in("order_id", orderIds);
+        .in("order_id", allowedOrderIds);
       if (error) return json({ error: error.message }, 500);
       return json({ data });
     }
