@@ -74,6 +74,28 @@ serve(async (req) => {
       return json({ data });
     }
 
+    // Also public, on purpose: this only reveals THAT a conversation exists
+    // on an order and roughly WHEN it was last active - never the message
+    // content itself. That's safe without a signature, and it's what lets a
+    // notification badge work even for someone who hasn't set up chat yet -
+    // they can see something's waiting before they ever sign anything.
+    if (action === "getActivity") {
+      const { contractAddress, walletAddress } = body;
+      const wallet = String(walletAddress).toLowerCase();
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("order_id, created_at")
+        .eq("contract_address", String(contractAddress).toLowerCase())
+        .or(`from_address.eq.${wallet},to_address.eq.${wallet}`)
+        .order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 500);
+      const latest: Record<string, string> = {};
+      for (const row of data || []) {
+        if (!latest[row.order_id]) latest[row.order_id] = row.created_at;
+      }
+      return json({ data: latest });
+    }
+
     // Every other action is authorized by the same one session signature.
     const { message, signature, contractAddress, walletAddress } = body;
     if (!message || !signature || !walletAddress || !contractAddress) {

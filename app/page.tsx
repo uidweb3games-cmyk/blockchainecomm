@@ -125,7 +125,8 @@ export default function Ecommerce() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'shop' | 'sell' | 'analytics'>('shop');
-  const [showListForm, setShowListForm] = useState(false);
+  const [sellSubTab, setSellSubTab] = useState<'list' | 'fulfill' | 'ads'>('list');
+  const [sellPageMenuOpen, setSellPageMenuOpen] = useState(false);
   const [listMode, setListMode] = useState<'simple' | 'variants'>('simple');
   const [itemName, setItemName] = useState('');
   const [itemImage, setItemImage] = useState('');
@@ -178,6 +179,7 @@ export default function Ecommerce() {
   const [disputeCenterOpen, setDisputeCenterOpen] = useState(false);
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
   const [resolvingDispute, setResolvingDispute] = useState(false);
+  const [disputeQueueTab, setDisputeQueueTab] = useState<'open' | 'resolved'>('open');
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -887,7 +889,67 @@ export default function Ecommerce() {
   };
 
   const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
+  const [chatActivityMap, setChatActivityMap] = useState<Record<number, string>>({});
+  const [chatSeenMap, setChatSeenMap] = useState<Record<number, string>>({});
   const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Loads the "when did each order's chat last have activity" info - no
+  // signature needed, works for anyone including someone who's never signed
+  // in to chat yet, so a notification can appear before they've set anything up.
+  const loadChatActivity = async (orderIds: number[]) => {
+    if (!address || orderIds.length === 0) return;
+    const { data, error } = await supabase.functions.invoke('dispute-chat', {
+      body: { action: 'getActivity', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+    });
+    if (error) { console.error('Failed to load chat activity:', error); return; }
+    setChatActivityMap(data?.data || {});
+  };
+
+  // "Seen" timestamps live in localStorage per wallet, so a message only
+  // shows as unread until THIS wallet has actually opened that chat once -
+  // not tied to whether encryption keys are set up.
+  useEffect(() => {
+    if (!address) return;
+    const key = `openspace_chat_seen_${address.toLowerCase()}`;
+    const raw = localStorage.getItem(key);
+    if (raw) { try { setChatSeenMap(JSON.parse(raw)); } catch (e) {} }
+  }, [address]);
+
+  const markChatSeen = (orderId: number) => {
+    if (!address) return;
+    const key = `openspace_chat_seen_${address.toLowerCase()}`;
+    setChatSeenMap((prev) => {
+      const next = { ...prev, [orderId]: new Date().toISOString() };
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const hasUnreadChat = (orderId: number): boolean => {
+    const latest = chatActivityMap[orderId];
+    if (!latest) return false;
+    const seen = chatSeenMap[orderId];
+    return !seen || new Date(latest) > new Date(seen);
+  };
+
+  // Runs in the background regardless of whether any chat window is open -
+  // this is what lets a notification appear on an order card even if the
+  // person hasn't opened that chat (or set up encryption) yet.
+  useEffect(() => {
+    if (!address) return;
+    const myOrderIds = allOrders
+      .filter((o) => {
+        const listing = getListingById(o.listingId);
+        return o.buyer.toLowerCase() === address.toLowerCase() || (listing && listing.seller.toLowerCase() === address.toLowerCase());
+      })
+      .map((o) => o.id);
+    if (myOrderIds.length === 0) return;
+
+    loadChatActivity(myOrderIds);
+    const interval = setInterval(() => loadChatActivity(myOrderIds), 8000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, allOrders.length]);
 
   // Always jump to the newest message - both when a chat first opens and
   // whenever a new message arrives, instead of leaving people stuck at
@@ -904,6 +966,7 @@ export default function Ecommerce() {
     if (chatModalOrderId === null) return;
     const interval = setInterval(() => {
       loadChatMessages(chatModalOrderId, true);
+      markChatSeen(chatModalOrderId);
     }, 1500);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1352,6 +1415,7 @@ export default function Ecommerce() {
       (o.buyer.toLowerCase() === address?.toLowerCase() || (listing && listing.seller.toLowerCase() === address?.toLowerCase()));
   }) : [];
   const disputedOrders = allOrders.filter((o) => o.disputed && !o.released);
+  const resolvedDisputedOrders = allOrders.filter((o) => o.disputed && o.released);
 
   const totalListed = allListings.length;
   const totalSold = allOrders.length;
@@ -1483,10 +1547,13 @@ export default function Ecommerce() {
 
           {(isBuyer || isSeller) && (
             <button
-              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatUnavailable(null); setChatModalOrderId(order.id); loadChatMessages(order.id, chatMessagesMap[order.id] !== undefined); }}
-              className={`w-full mb-2 py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
+              onClick={() => { const otherParty = isBuyer ? listing.seller : order.buyer; setChatUnavailable(null); setChatModalOrderId(order.id); loadChatMessages(order.id, chatMessagesMap[order.id] !== undefined); markChatSeen(order.id); }}
+              className={`relative w-full mb-2 py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
             >
               💬 Message {isBuyer ? 'Seller' : 'Buyer'}
+              {hasUnreadChat(order.id) && (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+              )}
             </button>
           )}
 
@@ -1568,7 +1635,7 @@ export default function Ecommerce() {
                         <button onClick={() => setDarkMode(!darkMode)} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>{darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
                         <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>❓ How to Test</button>
                         {isConnected && disputeEligible.length > 0 && (<button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚠ Open Dispute</button>)}
-                        {(isAdmin || isModeratorState) && disputedOrders.length > 0 && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); disputedOrders.forEach((o) => loadEvidence(o.id)); loadCaseStatus(disputedOrders.map((o) => o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Resolve Disputes ({disputedOrders.length})</button>)}
+                        {(isAdmin || isModeratorState) && (disputedOrders.length > 0 || resolvedDisputedOrders.length > 0) && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); setDisputeQueueTab('open'); [...disputedOrders, ...resolvedDisputedOrders].forEach((o) => loadEvidence(o.id)); loadCaseStatus([...disputedOrders, ...resolvedDisputedOrders].map((o) => o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Dispute Queue ({disputedOrders.length})</button>)}
                         {!isAdmin && !isModeratorState && isConnected && (<button onClick={async () => { const result = await checkIfModerator(); if (!result) alert('This wallet is not registered as a support/moderator wallet.'); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium ${subtleText} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🔧 Check Support Access</button>)}
                         {isAdmin && (<button onClick={() => { openAdminSettings(); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Admin Settings</button>)}
                       </div>
@@ -1714,9 +1781,22 @@ export default function Ecommerce() {
                 )}
               </div>
               {isConnected && sellerProfile && (
-                <button onClick={() => setShowListForm(!showListForm)} className="px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
-                  {showListForm ? 'Cancel' : '+ List an Item'}
-                </button>
+                <div className="relative">
+                  <button onClick={() => setSellPageMenuOpen((v) => !v)} className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                    {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : '📢 Sponsored Ads'}
+                    <span className="text-xs">▾</span>
+                  </button>
+                  {sellPageMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setSellPageMenuOpen(false)} />
+                      <div className={`absolute right-0 mt-2 w-56 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
+                        <button onClick={() => { setSellSubTab('list'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'list' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📝 List an Item</button>
+                        <button onClick={() => { setSellSubTab('fulfill'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'fulfill' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📦 Orders to Fulfill {myOrdersToFulfill.length > 0 ? `(${myOrdersToFulfill.length})` : ''}</button>
+                        <button onClick={() => { setSellSubTab('ads'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'ads' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📢 Sponsored Ads</button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
 
@@ -1733,7 +1813,7 @@ export default function Ecommerce() {
               </div>
             ) : (
               <>
-                {showListForm && (
+                {sellSubTab === 'list' && (
                   <div className={`mb-10 ${cardBg} rounded-3xl p-6 border ${cardBorder} max-w-lg`}>
                     <h3 className="font-semibold text-lg mb-4">List a New Item</h3>
 
@@ -1885,7 +1965,7 @@ export default function Ecommerce() {
                   </div>
                 )}
 
-                {myListings.length > 0 && (
+                {sellSubTab === 'list' && myListings.length > 0 && (
                   <div className="mb-10">
                     <h3 className="font-semibold text-lg mb-4">My Listings</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -1912,7 +1992,7 @@ export default function Ecommerce() {
                   </div>
                 )}
 
-                {isConnected && sellerProfile && (
+                {sellSubTab === 'ads' && isConnected && sellerProfile && (
                   <div className={`mb-10 ${cardBg} rounded-3xl p-6 border ${cardBorder} max-w-lg`}>
                     <h3 className="font-semibold text-lg mb-1">Sponsored Ads</h3>
                     {!mySubscriptionActive ? (
@@ -1953,23 +2033,25 @@ export default function Ecommerce() {
                   </div>
                 )}
 
-                <div>
-                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                    <h3 className="font-semibold text-lg">Orders to Fulfill</h3>
-                    {myOrdersToFulfill.length > 0 && !sellerShipAuth && (
-                      <button onClick={unlockSellerShipping} disabled={unlockingShipInfo} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
-                        {unlockingShipInfo ? 'Confirm in wallet...' : '🔒 Unlock Shipping Info'}
-                      </button>
+                {sellSubTab === 'fulfill' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <h3 className="font-semibold text-lg">Orders to Fulfill</h3>
+                      {myOrdersToFulfill.length > 0 && !sellerShipAuth && (
+                        <button onClick={unlockSellerShipping} disabled={unlockingShipInfo} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
+                          {unlockingShipInfo ? 'Confirm in wallet...' : '🔒 Unlock Shipping Info'}
+                        </button>
+                      )}
+                    </div>
+                    {myOrdersToFulfill.length === 0 ? (
+                      <p className={subtleText}>No orders yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {myOrdersToFulfill.map((order) => renderOrderCard(order, 'seller'))}
+                      </div>
                     )}
                   </div>
-                  {myOrdersToFulfill.length === 0 ? (
-                    <p className={subtleText}>No orders yet.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                      {myOrdersToFulfill.map((order) => renderOrderCard(order, 'seller'))}
-                    </div>
-                  )}
-                </div>
+                )}
               </>
             )}
           </>
@@ -2571,35 +2653,52 @@ export default function Ecommerce() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto`}>
             <h3 className="font-semibold text-lg mb-1">Dispute Queue</h3>
-            <p className={`text-xs ${subtleText} mb-4`}>{disputedOrders.length} case{disputedOrders.length === 1 ? '' : 's'} awaiting a decision. Work through them one at a time.</p>
+            <p className={`text-xs ${subtleText} mb-4`}>
+              {disputeQueueTab === 'open'
+                ? `${disputedOrders.length} case${disputedOrders.length === 1 ? '' : 's'} awaiting a decision.`
+                : `${resolvedDisputedOrders.length} past case${resolvedDisputedOrders.length === 1 ? '' : 's'} - evidence and notes stay visible for reference.`}
+            </p>
+
+            <div className={`flex rounded-xl border ${cardBorder} p-1 mb-4`}>
+              <button onClick={() => setDisputeQueueTab('open')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${disputeQueueTab === 'open' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>Open ({disputedOrders.length})</button>
+              <button onClick={() => setDisputeQueueTab('resolved')} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${disputeQueueTab === 'resolved' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}>Resolved ({resolvedDisputedOrders.length})</button>
+            </div>
+
             <div className="space-y-4 mb-4">
-              {disputedOrders.length === 0 ? (
-                <p className={`text-sm ${subtleText} py-4 text-center`}>No open disputes right now.</p>
+              {(disputeQueueTab === 'open' ? disputedOrders : resolvedDisputedOrders).length === 0 ? (
+                <p className={`text-sm ${subtleText} py-4 text-center`}>
+                  {disputeQueueTab === 'open' ? 'No open disputes right now.' : 'No resolved disputes yet.'}
+                </p>
               ) : (
-                disputedOrders.map((order) => {
+                (disputeQueueTab === 'open' ? disputedOrders : resolvedDisputedOrders).map((order) => {
                   const listing = getListingById(order.listingId);
                   const items = evidenceMap[order.id] || [];
                   const status = caseStatusMap[order.id];
                   const claimedByMe = status?.claimedBy?.toLowerCase() === address?.toLowerCase();
                   const claimedBySomeoneElse = status?.claimedBy && !claimedByMe;
+                  const isResolved = disputeQueueTab === 'resolved';
                   return (
-                    <div key={order.id} className={`p-4 rounded-2xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>
+                    <div key={order.id} className={`p-4 rounded-2xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} ${isResolved ? 'opacity-90' : ''}`}>
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <p className="font-medium text-sm">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
-                        <button
-                          onClick={() => toggleClaimCase(order.id)}
-                          disabled={!!claimedBySomeoneElse}
-                          className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${claimedByMe ? 'bg-lime-400/20 text-lime-600 border border-lime-400/40' : claimedBySomeoneElse ? `${subtleText} border ${cardBorder} cursor-not-allowed` : `border ${cardBorder} ${darkMode ? 'hover:bg-white/10' : 'hover:bg-white'}`}`}
-                        >
-                          {claimedByMe ? '✓ Claimed by you' : claimedBySomeoneElse ? `Claimed: ${status!.claimedBy!.slice(0, 6)}...${status!.claimedBy!.slice(-4)}` : 'Claim this case'}
-                        </button>
+                        {isResolved ? (
+                          <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${darkMode ? 'bg-white/10' : 'bg-zinc-200'} ${subtleText}`}>✓ Resolved</span>
+                        ) : (
+                          <button
+                            onClick={() => toggleClaimCase(order.id)}
+                            disabled={!!claimedBySomeoneElse}
+                            className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${claimedByMe ? 'bg-lime-400/20 text-lime-600 border border-lime-400/40' : claimedBySomeoneElse ? `${subtleText} border ${cardBorder} cursor-not-allowed` : `border ${cardBorder} ${darkMode ? 'hover:bg-white/10' : 'hover:bg-white'}`}`}
+                          >
+                            {claimedByMe ? '✓ Claimed by you' : claimedBySomeoneElse ? `Claimed: ${status!.claimedBy!.slice(0, 6)}...${status!.claimedBy!.slice(-4)}` : 'Claim this case'}
+                          </button>
+                        )}
                       </div>
                       <p className={`text-[11px] ${subtleText} font-mono mb-3`}>Buyer: {order.buyer.slice(0, 6)}...{order.buyer.slice(-4)} {listing && `· Seller: ${listing.seller.slice(0, 6)}...${listing.seller.slice(-4)}`}</p>
 
                       <div className="mb-3">
                         <p className={`text-[10px] uppercase tracking-wide font-semibold ${subtleText} mb-2`}>Evidence submitted</p>
                         {items.length === 0 ? (
-                          <p className={`text-xs ${subtleText}`}>Nothing submitted yet by either party.</p>
+                          <p className={`text-xs ${subtleText}`}>Nothing was submitted by either party.</p>
                         ) : (
                           <div className="space-y-2">
                             {items.map((item) => (
@@ -2613,25 +2712,31 @@ export default function Ecommerce() {
                         )}
                       </div>
 
-                      <div className="mb-3">
+                      <div className={isResolved ? '' : 'mb-3'}>
                         <p className={`text-[10px] uppercase tracking-wide font-semibold ${subtleText} mb-2`}>Moderator notes</p>
-                        <textarea
-                          value={noteDrafts[order.id] ?? status?.note ?? ''}
-                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [order.id]: e.target.value }))}
-                          onBlur={() => saveNote(order.id)}
-                          placeholder="Add a recommendation or note for the admin/other moderators..."
-                          rows={2}
-                          className={`w-full ${cardBg} border ${cardBorder} rounded-lg px-3 py-2 text-xs outline-none focus:border-lime-400 transition-colors resize-none`}
-                        />
+                        {isResolved ? (
+                          <p className={`text-xs p-2 rounded-lg border ${cardBorder} ${cardBg}`}>{status?.note?.trim() ? status.note : <span className={subtleText}>No notes were left on this case.</span>}</p>
+                        ) : (
+                          <textarea
+                            value={noteDrafts[order.id] ?? status?.note ?? ''}
+                            onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                            onBlur={() => saveNote(order.id)}
+                            placeholder="Add a recommendation or note for the admin/other moderators..."
+                            rows={2}
+                            className={`w-full ${cardBg} border ${cardBorder} rounded-lg px-3 py-2 text-xs outline-none focus:border-lime-400 transition-colors resize-none`}
+                          />
+                        )}
                       </div>
 
-                      {isAdmin ? (
-                        <div className="flex gap-2">
-                          <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), true]); }} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
-                          <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), false]); }} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
-                        </div>
-                      ) : (
-                        <p className={`text-[11px] ${subtleText} italic`}>You can review this case, but only the admin wallet can finalize a decision.</p>
+                      {!isResolved && (
+                        isAdmin ? (
+                          <div className="flex gap-2">
+                            <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), true]); }} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
+                            <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), false]); }} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
+                          </div>
+                        ) : (
+                          <p className={`text-[11px] ${subtleText} italic`}>You can review this case, but only the admin wallet can finalize a decision.</p>
+                        )
                       )}
                     </div>
                   );
