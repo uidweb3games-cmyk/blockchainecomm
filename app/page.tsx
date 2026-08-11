@@ -520,6 +520,25 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
+  // Fetches whether each resolved dispute ended with the seller getting paid
+  // or the buyer getting refunded - only needed for orders that were both
+  // disputed AND released.
+  const resolvedDisputedOrderIds = allOrders.filter((o) => o.disputed && o.released).map((o) => o.id);
+  const disputeOutcomeContracts = resolvedDisputedOrderIds.flatMap((id) => [
+    { address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'disputeOutcomeRecorded' as const, args: [BigInt(id)] as const },
+    { address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'disputePaidToSeller' as const, args: [BigInt(id)] as const },
+  ]);
+  const { data: disputeOutcomeData } = useReadContracts({ contracts: disputeOutcomeContracts, query: { enabled: disputeOutcomeContracts.length > 0 } });
+
+  const getDisputeOutcome = (orderId: number): { recorded: boolean; paidToSeller: boolean } | null => {
+    const idx = resolvedDisputedOrderIds.indexOf(orderId);
+    if (idx === -1 || !disputeOutcomeData) return null;
+    const recordedResult = disputeOutcomeData[idx * 2];
+    const paidResult = disputeOutcomeData[idx * 2 + 1];
+    if (recordedResult?.status !== 'success' || paidResult?.status !== 'success') return null;
+    return { recorded: Boolean(recordedResult.result), paidToSeller: Boolean(paidResult.result) };
+  };
+
   // ---------- SHIPPING INFO (Supabase, signature-gated) ----------
   // Shipping data is no longer readable/writable directly from the browser.
   // Every request must include a wallet signature that the Edge Function
@@ -2583,6 +2602,7 @@ export default function Ecommerce() {
         const items = evidenceMap[evidenceModalOrderId] || [];
         const status = caseStatusMap[evidenceModalOrderId];
         const isResolved = order.released;
+        const outcome = getDisputeOutcome(evidenceModalOrderId);
         return (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setEvidenceModalOrderId(null)}>
             <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
@@ -2597,7 +2617,14 @@ export default function Ecommerce() {
               {isResolved && (
                 <div className="px-6 mb-3">
                   <div className={`p-3 rounded-xl border border-lime-400/40 bg-lime-400/10`}>
-                    <p className="text-xs font-semibold text-lime-600 mb-1">✓ This dispute has been resolved</p>
+                    <p className="text-xs font-semibold text-lime-600 mb-1">
+                      {outcome?.recorded
+                        ? `✓ Resolved — ${outcome.paidToSeller ? 'seller was paid' : 'buyer was refunded'}`
+                        : '✓ This dispute has been resolved'}
+                    </p>
+                    {!outcome?.recorded && (
+                      <p className={`text-[11px] ${subtleText} mb-1`}>This was resolved before outcome tracking was added, so the exact result isn't on record here.</p>
+                    )}
                     {status?.note?.trim() ? (
                       <p className="text-sm">{status.note}</p>
                     ) : (
@@ -2692,12 +2719,15 @@ export default function Ecommerce() {
                   const claimedByMe = status?.claimedBy?.toLowerCase() === address?.toLowerCase();
                   const claimedBySomeoneElse = status?.claimedBy && !claimedByMe;
                   const isResolved = disputeQueueTab === 'resolved';
+                  const outcome = isResolved ? getDisputeOutcome(order.id) : null;
                   return (
                     <div key={order.id} className={`p-4 rounded-2xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} ${isResolved ? 'opacity-90' : ''}`}>
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <p className="font-medium text-sm">{listing?.name || `Order #${order.id}`} — {listing ? (Number(listing.price) / 1e18).toString() : ''} {listing ? currencySymbol(listing.paymentToken) : ''}</p>
                         {isResolved ? (
-                          <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${darkMode ? 'bg-white/10' : 'bg-zinc-200'} ${subtleText}`}>✓ Resolved</span>
+                          <span className={`shrink-0 px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap ${darkMode ? 'bg-white/10' : 'bg-zinc-200'} ${subtleText}`}>
+                            {outcome?.recorded ? `✓ ${outcome.paidToSeller ? 'Paid seller' : 'Refunded buyer'}` : '✓ Resolved'}
+                          </span>
                         ) : (
                           <button
                             onClick={() => toggleClaimCase(order.id)}
