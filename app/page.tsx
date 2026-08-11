@@ -1076,7 +1076,6 @@ export default function Ecommerce() {
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
     setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setColorImagesInput({}); setListMode('simple');
-    setShowListForm(false);
   };
 
   const handleListSimple = () => {
