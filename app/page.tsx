@@ -177,6 +177,7 @@ export default function Ecommerce() {
   const [pendingTokenBuy, setPendingTokenBuy] = useState<{ lines: CartLine[]; token: string; totalDue: bigint } | null>(null);
   const [disputeCenterOpen, setDisputeCenterOpen] = useState(false);
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
+  const [resolvingDispute, setResolvingDispute] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -640,6 +641,16 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txConfirmed, awaitingPurchaseTx]);
 
+  // Once a dispute resolution (Pay Seller / Refund Buyer) actually confirms
+  // on-chain, close the Dispute Queue automatically instead of leaving the
+  // person sitting on a case that's already been settled.
+  useEffect(() => {
+    if (txConfirmed && resolvingDispute) {
+      setResolvingDispute(false);
+      setResolveCenterOpen(false);
+    }
+  }, [txConfirmed, resolvingDispute]);
+
   // ---------- ENCRYPTED CHAT + DISPUTE EVIDENCE ----------
   // Chat messages are scrambled in the browser before they're ever sent
   // anywhere, using a key derived from a signed message - so only the
@@ -876,6 +887,16 @@ export default function Ecommerce() {
   };
 
   const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Always jump to the newest message - both when a chat first opens and
+  // whenever a new message arrives, instead of leaving people stuck at
+  // whatever scroll position it happened to load at.
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatModalOrderId, chatMessagesMap[chatModalOrderId ?? -1]]);
 
   // While a chat window is open, quietly check for new messages - so a
   // reply shows up on its own instead of needing to close and reopen.
@@ -2431,7 +2452,7 @@ export default function Ecommerce() {
                 </div>
                 <button onClick={() => setChatModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
                 {chatLoading ? (
                   <p className={`text-sm ${subtleText} text-center py-8`}>Decrypting messages...</p>
                 ) : messages.length === 0 ? (
@@ -2606,8 +2627,8 @@ export default function Ecommerce() {
 
                       {isAdmin ? (
                         <div className="flex gap-2">
-                          <button onClick={() => call('resolveDispute', [BigInt(order.id), true])} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
-                          <button onClick={() => call('resolveDispute', [BigInt(order.id), false])} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
+                          <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), true]); }} disabled={isPending} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Pay Seller</button>
+                          <button onClick={() => { setResolvingDispute(true); call('resolveDispute', [BigInt(order.id), false]); }} disabled={isPending} className="flex-1 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Refund Buyer</button>
                         </div>
                       ) : (
                         <p className={`text-[11px] ${subtleText} italic`}>You can review this case, but only the admin wallet can finalize a decision.</p>
