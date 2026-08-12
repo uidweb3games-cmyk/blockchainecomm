@@ -320,6 +320,15 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
+  // A price-based sort only makes sense within one currency - if the person
+  // switches back to viewing all currencies mixed together, fall back to
+  // Newest rather than silently showing a meaningless price order.
+  useEffect(() => {
+    if (viewCurrency === ALL_KEY && (sortOrder === 'price_low' || sortOrder === 'price_high')) {
+      setSortOrder('newest');
+    }
+  }, [viewCurrency, sortOrder]);
+
   useEffect(() => {
     if (!isConnected || !address) return;
     supabase.functions.invoke('site-analytics', {
@@ -1503,8 +1512,9 @@ export default function Ecommerce() {
   const inputBg = darkMode ? 'bg-white/5' : 'bg-zinc-50';
 
   const filterAddress = viewCurrency === ALL_KEY ? null : VIEW_CURRENCIES[viewCurrency].address;
-  const minPriceWei = minPrice && !isNaN(Number(minPrice)) ? parseEther(minPrice) : null;
-  const maxPriceWei = maxPrice && !isNaN(Number(maxPrice)) ? parseEther(maxPrice) : null;
+  const priceFilterUsable = filterAddress !== null; // only meaningful once one specific currency is picked
+  const minPriceWei = priceFilterUsable && minPrice && !isNaN(Number(minPrice)) ? parseEther(minPrice) : null;
+  const maxPriceWei = priceFilterUsable && maxPrice && !isNaN(Number(maxPrice)) ? parseEther(maxPrice) : null;
 
   const shopListings = allListings.filter((l) => {
     if (l.delisted) return false;
@@ -1814,17 +1824,35 @@ export default function Ecommerce() {
                     <div className="fixed inset-0 z-40" onClick={() => setSortMenuOpen(false)} />
                     <div className={`absolute left-0 mt-2 w-48 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
                       <button onClick={() => { setSortOrder('newest'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'newest' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Newest</button>
-                      <button onClick={() => { setSortOrder('price_low'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'price_low' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Price: Low to High</button>
-                      <button onClick={() => { setSortOrder('price_high'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'price_high' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Price: High to Low</button>
+                      <button
+                        onClick={() => { if (filterAddress !== null) { setSortOrder('price_low'); setSortMenuOpen(false); } }}
+                        disabled={filterAddress === null}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium ${filterAddress === null ? `${subtleText} cursor-not-allowed opacity-60` : sortOrder === 'price_low' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                      >
+                        Price: Low to High {filterAddress === null && <span className="block text-[10px] font-normal">Pick a currency first</span>}
+                      </button>
+                      <button
+                        onClick={() => { if (filterAddress !== null) { setSortOrder('price_high'); setSortMenuOpen(false); } }}
+                        disabled={filterAddress === null}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium ${filterAddress === null ? `${subtleText} cursor-not-allowed opacity-60` : sortOrder === 'price_high' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                      >
+                        Price: High to Low {filterAddress === null && <span className="block text-[10px] font-normal">Pick a currency first</span>}
+                      </button>
                     </div>
                   </>
                 )}
               </div>
-              <input type="number" min="0" step="0.0001" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="Min price" className={`w-24 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
-              <span className={`text-xs ${subtleText}`}>–</span>
-              <input type="number" min="0" step="0.0001" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Max price" className={`w-24 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
-              {(minPrice || maxPrice) && (
-                <button onClick={() => { setMinPrice(''); setMaxPrice(''); }} className={`text-xs ${subtleText} underline`}>Clear</button>
+              {filterAddress === null ? (
+                <span className={`text-xs ${subtleText} italic`}>Pick a currency above to filter by price range</span>
+              ) : (
+                <>
+                  <input type="number" min="0" step="0.0001" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder={`Min (${currencySymbol(filterAddress)})`} className={`w-28 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
+                  <span className={`text-xs ${subtleText}`}>–</span>
+                  <input type="number" min="0" step="0.0001" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder={`Max (${currencySymbol(filterAddress)})`} className={`w-28 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
+                  {(minPrice || maxPrice) && (
+                    <button onClick={() => { setMinPrice(''); setMaxPrice(''); }} className={`text-xs ${subtleText} underline`}>Clear</button>
+                  )}
+                </>
               )}
             </div>
           </div>
