@@ -1146,6 +1146,20 @@ export default function Ecommerce() {
     setPickedSize('');
   }, [quickViewId]);
 
+  // Shop name for whoever is selling the item currently open in Quick View -
+  // public lookup, no signature needed, works for any visitor.
+  const [quickViewSellerName, setQuickViewSellerName] = useState<string | null>(null);
+  useEffect(() => {
+    const sellerAddr = quickViewListing?.seller;
+    if (!sellerAddr) { setQuickViewSellerName(null); return; }
+    setQuickViewSellerName(null);
+    supabase.functions.invoke('seller-profiles', {
+      body: { action: 'getProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: sellerAddr },
+    }).then(({ data, error }) => {
+      if (!error && data?.data?.shop_name) setQuickViewSellerName(data.data.shop_name);
+    }).catch(() => {});
+  }, [quickViewListing?.seller]);
+
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
@@ -2502,7 +2516,14 @@ export default function Ecommerce() {
               <div className="flex items-center gap-2 mb-3">
                 <Link href={`/seller/${quickViewListing.seller}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                   <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                  <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                  {quickViewSellerName ? (
+                    <div>
+                      <p className="text-xs font-semibold underline leading-tight">{quickViewSellerName}</p>
+                      <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                    </div>
+                  ) : (
+                    <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                  )}
                 </Link>
               </div>
               <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
