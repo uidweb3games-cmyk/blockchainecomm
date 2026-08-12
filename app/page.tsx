@@ -173,6 +173,10 @@ export default function Ecommerce() {
   const [viewCurrency, setViewCurrency] = useState(ALL_KEY);
   const [viewCategory, setViewCategory] = useState(ALL_CATEGORIES);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'price_low' | 'price_high'>('newest');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
   const [shippingModal, setShippingModal] = useState(false);
@@ -1499,13 +1503,22 @@ export default function Ecommerce() {
   const inputBg = darkMode ? 'bg-white/5' : 'bg-zinc-50';
 
   const filterAddress = viewCurrency === ALL_KEY ? null : VIEW_CURRENCIES[viewCurrency].address;
+  const minPriceWei = minPrice && !isNaN(Number(minPrice)) ? parseEther(minPrice) : null;
+  const maxPriceWei = maxPrice && !isNaN(Number(maxPrice)) ? parseEther(maxPrice) : null;
+
   const shopListings = allListings.filter((l) => {
     if (l.delisted) return false;
     if (!l.hasVariants && l.simpleStock <= BigInt(0)) return false;
     if (filterAddress !== null && l.paymentToken.toLowerCase() !== filterAddress.toLowerCase()) return false;
     if (viewCategory !== ALL_CATEGORIES && l.category !== viewCategory) return false;
     if (searchQuery.trim() && !l.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
+    if (minPriceWei !== null && l.price < minPriceWei) return false;
+    if (maxPriceWei !== null && l.price > maxPriceWei) return false;
     return true;
+  }).sort((a, b) => {
+    if (sortOrder === 'price_low') return a.price < b.price ? -1 : a.price > b.price ? 1 : 0;
+    if (sortOrder === 'price_high') return a.price > b.price ? -1 : a.price < b.price ? 1 : 0;
+    return b.id - a.id; // newest first - higher listing ID means listed more recently
   });
 
   const adListings = allListings.filter((l) => !l.delisted && l.isFeaturedNow);
@@ -1786,9 +1799,33 @@ export default function Ecommerce() {
 
         {activeTab === 'shop' && (
           <div className={`border-t ${cardBorder} px-4 sm:px-8 py-2.5`}>
-            <div className={`max-w-6xl mx-auto flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden`}>
+            <div className={`max-w-6xl mx-auto flex items-center ${inputBg} border ${cardBorder} rounded-full overflow-hidden mb-2`}>
               <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search items..." className="flex-1 min-w-0 bg-transparent px-4 py-2.5 outline-none text-sm" />
               <div className="w-8 h-8 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">🔍</div>
+            </div>
+            <div className="max-w-6xl mx-auto flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <button onClick={() => setSortMenuOpen((v) => !v)} className={`px-3 py-1.5 rounded-full border ${cardBorder} text-xs font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} flex items-center gap-1`}>
+                  Sort: {sortOrder === 'newest' ? 'Newest' : sortOrder === 'price_low' ? 'Price: Low to High' : 'Price: High to Low'}
+                  <span className="text-[10px]">▾</span>
+                </button>
+                {sortMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setSortMenuOpen(false)} />
+                    <div className={`absolute left-0 mt-2 w-48 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
+                      <button onClick={() => { setSortOrder('newest'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'newest' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Newest</button>
+                      <button onClick={() => { setSortOrder('price_low'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'price_low' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Price: Low to High</button>
+                      <button onClick={() => { setSortOrder('price_high'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'price_high' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Price: High to Low</button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <input type="number" min="0" step="0.0001" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="Min price" className={`w-24 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
+              <span className={`text-xs ${subtleText}`}>–</span>
+              <input type="number" min="0" step="0.0001" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Max price" className={`w-24 ${inputBg} border ${cardBorder} rounded-full px-3 py-1.5 outline-none focus:border-lime-400 transition-colors text-xs`} />
+              {(minPrice || maxPrice) && (
+                <button onClick={() => { setMinPrice(''); setMaxPrice(''); }} className={`text-xs ${subtleText} underline`}>Clear</button>
+              )}
             </div>
           </div>
         )}
