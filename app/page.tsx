@@ -563,6 +563,22 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
+  // For the "Verified Seller" badge - checks which sellers currently shown
+  // in the shop have completed their shop profile setup. Public lookup, no
+  // signature needed.
+  const [verifiedSellers, setVerifiedSellers] = useState<Set<string>>(new Set());
+  const distinctSellerAddresses = Array.from(new Set(allListings.filter((l) => !l.delisted).map((l) => l.seller.toLowerCase())));
+  useEffect(() => {
+    if (distinctSellerAddresses.length === 0) return;
+    supabase.functions.invoke('seller-profiles', {
+      body: { action: 'getVerifiedSellers', contractAddress: MARKETPLACE_ADDRESS, walletAddresses: distinctSellerAddresses },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load verified sellers:', error); return; }
+      setVerifiedSellers(new Set((data?.data || []).map((a: string) => a.toLowerCase())));
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [distinctSellerAddresses.join(',')]);
+
   // Fetches whether each resolved dispute ended with the seller getting paid
   // or the buyer getting refunded - only needed for orders that were both
   // disputed AND released.
@@ -1548,6 +1564,14 @@ export default function Ecommerce() {
               {listing.colors.length}c / {listing.sizes.length}s
             </span>
           )}
+          <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-semibold ${darkMode ? 'bg-zinc-950/80 text-lime-400' : 'bg-white/90 text-lime-600'}`}>
+            🔒 Escrow
+          </span>
+          {verifiedSellers.has(listing.seller.toLowerCase()) && (
+            <span className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-semibold ${darkMode ? 'bg-zinc-950/80 text-sky-400' : 'bg-white/90 text-sky-600'}`}>
+              ✓ Verified Seller
+            </span>
+          )}
         </div>
         <div className="px-2.5 py-2">
           <p className="text-sm font-medium truncate">{listing.name}</p>
@@ -2513,9 +2537,15 @@ export default function Ecommerce() {
               <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
             </div>
             <div className="p-6">
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
-                <span className="text-[11px] uppercase tracking-wider text-lime-600 font-semibold">Verified on-chain</span>
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
+                  <span className="text-[11px] uppercase tracking-wider text-lime-600 font-semibold">Verified on-chain</span>
+                </div>
+                <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-lime-400/10 text-lime-600 border border-lime-400/30">🔒 Escrow Protected</span>
+                {verifiedSellers.has(quickViewListing.seller.toLowerCase()) && (
+                  <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-sky-400/10 text-sky-600 border border-sky-400/30">✓ Verified Seller</span>
+                )}
               </div>
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
               <div className="flex items-center gap-2 mb-3">

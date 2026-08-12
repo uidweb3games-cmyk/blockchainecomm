@@ -69,6 +69,20 @@ serve(async (req) => {
       return json({ data });
     }
 
+    // Public - checks many sellers at once for the "Verified Seller" badge
+    // (has this seller completed shop setup?). Only returns which addresses
+    // have a profile, not the profile content itself.
+    if (action === "getVerifiedSellers") {
+      const { walletAddresses } = body;
+      const { data, error } = await supabase
+        .from("seller_profiles")
+        .select("wallet_address")
+        .eq("contract_address", String(contractAddress).toLowerCase())
+        .in("wallet_address", (walletAddresses as string[]).map((a) => a.toLowerCase()));
+      if (error) return json({ error: error.message }, 500);
+      return json({ data: (data || []).map((r: any) => r.wallet_address) });
+    }
+
     // Saving your own profile requires proving you own the wallet.
     const { message, signature, walletAddress } = body;
     if (!message || !signature || !walletAddress) return json({ error: "Missing signature" }, 400);
