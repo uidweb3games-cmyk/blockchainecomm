@@ -1564,14 +1564,6 @@ export default function Ecommerce() {
               {listing.colors.length}c / {listing.sizes.length}s
             </span>
           )}
-          <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-semibold ${darkMode ? 'bg-zinc-950/80 text-lime-400' : 'bg-white/90 text-lime-600'}`}>
-            🔒 Escrow
-          </span>
-          {verifiedSellers.has(listing.seller.toLowerCase()) && (
-            <span className={`absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-semibold ${darkMode ? 'bg-zinc-950/80 text-sky-400' : 'bg-white/90 text-sky-600'}`}>
-              ✓ Verified Seller
-            </span>
-          )}
         </div>
         <div className="px-2.5 py-2">
           <p className="text-sm font-medium truncate">{listing.name}</p>
