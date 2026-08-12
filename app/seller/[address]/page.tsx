@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { useReadContract, useReadContracts } from 'wagmi';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI } from '../../contract';
 import { supabase } from '../../supabaseClient';
@@ -26,8 +27,9 @@ function currencySymbol(tokenAddress: string) {
   return 'TOKEN';
 }
 
-export default function SellerStorefrontPage({ params }: { params: { address: string } }) {
-  const sellerAddress = params.address;
+export default function SellerStorefrontPage() {
+  const params = useParams();
+  const sellerAddress = (Array.isArray(params?.address) ? params.address[0] : params?.address) || '';
   const [profile, setProfile] = useState<{ shopName: string; bio: string } | null>(null);
   const [profileChecked, setProfileChecked] = useState(false);
 
