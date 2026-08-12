@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import Link from 'next/link';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction, useSignMessage } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
@@ -333,6 +334,14 @@ export default function Ecommerce() {
       setPurchasesOpen(true);
     }
 
+    // Arriving from a seller storefront link (?item=ID) opens that item
+    // directly instead of just landing on the generic shop page.
+    const itemParam = new URLSearchParams(window.location.search).get('item');
+    if (itemParam && !isNaN(Number(itemParam))) {
+      setActiveTab('shop');
+      setQuickViewId(Number(itemParam));
+    }
+
     // One anonymous visit logged per browser tab session - not tied to a
     // wallet, works even for someone who never connects at all.
     if (!sessionStorage.getItem('openspace_visit_logged')) {
@@ -373,18 +382,29 @@ export default function Ecommerce() {
   const { data: myUsdcBalance } = useReadContract({ address: USDC_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: address ? [address] : undefined, query: { enabled: !!address } });
   const { data: myUsdtBalance } = useReadContract({ address: USDT_ADDRESS, abi: ERC20_ABI, functionName: 'balanceOf', args: address ? [address] : undefined, query: { enabled: !!address } });
 
-  const sellerProfileKey = (addr: string) => `seller_profile_${MARKETPLACE_ADDRESS}_${addr.toLowerCase()}`;
+  // Seller shop profile (shop name + bio) now lives in Supabase instead of
+  // localStorage, so it's visible from any device - not just the seller's
+  // own browser. Public to read, signature-verified to save.
   useEffect(() => {
-    if (address) {
-      const raw = localStorage.getItem(sellerProfileKey(address));
-      setSellerProfile(raw ? JSON.parse(raw) : null);
-    } else setSellerProfile(null);
+    if (!address) { setSellerProfile(null); return; }
+    supabase.functions.invoke('seller-profiles', {
+      body: { action: 'getProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load seller profile:', error); return; }
+      const row = data?.data;
+      setSellerProfile(row ? { shopName: row.shop_name, bio: row.bio || '' } : null);
+    });
   }, [address]);
 
-  const saveSellerProfile = () => {
+  const saveSellerProfile = async () => {
     if (!address || !shopNameInput.trim()) { alert('Please enter a shop name'); return; }
+    const auth = await ensureChatSessionAuth();
+    if (!auth) return;
+    const { error } = await supabase.functions.invoke('seller-profiles', {
+      body: { action: 'saveProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, shopName: shopNameInput.trim(), bio: shopBioInput.trim(), message: auth.message, signature: auth.signature },
+    });
+    if (error) { console.error('Failed to save seller profile:', error); alert('Failed to save shop profile. Please try again.'); return; }
     const profile = { shopName: shopNameInput.trim(), bio: shopBioInput.trim() };
-    localStorage.setItem(sellerProfileKey(address), JSON.stringify(profile));
     setSellerProfile(profile);
     setSellerRegOpen(false);
     setSellerOnboardOpen(false);
@@ -1828,9 +1848,16 @@ export default function Ecommerce() {
                 </h2>
                 <p className={`${subtleText} text-base sm:text-lg`}>Manage your listings, shipments, and sales.</p>
                 {isConnected && sellerProfile && (
-                  <button onClick={openSellerReg} className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-sky-500 hover:text-sky-600">
-                    🏪 {sellerProfile.shopName} <span className={`text-xs ${subtleText} font-normal`}>(edit)</span>
-                  </button>
+                  <div className="mt-2 flex items-center gap-3 flex-wrap">
+                    <button onClick={openSellerReg} className="inline-flex items-center gap-1.5 text-sm font-medium text-sky-500 hover:text-sky-600">
+                      🏪 {sellerProfile.shopName} <span className={`text-xs ${subtleText} font-normal`}>(edit)</span>
+                    </button>
+                    {address && (
+                      <Link href={`/seller/${address}`} target="_blank" className="text-xs text-lime-600 hover:text-lime-700 underline">
+                        View public storefront ↗
+                      </Link>
+                    )}
+                  </div>
                 )}
               </div>
               {isConnected && sellerProfile && (
@@ -2473,8 +2500,10 @@ export default function Ecommerce() {
               </div>
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
               <div className="flex items-center gap-2 mb-3">
-                <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                <p className={`text-xs ${subtleText} font-mono`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                <Link href={`/seller/${quickViewListing.seller}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                  <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                  <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                </Link>
               </div>
               <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
                 {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
