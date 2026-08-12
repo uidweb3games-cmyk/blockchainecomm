@@ -5,7 +5,7 @@ import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteC
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import { formatEther, parseEther } from 'viem';
-import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, ResponsiveContainer, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
 import { supabase } from './supabaseClient';
 import nacl from 'tweetnacl';
@@ -219,6 +219,8 @@ export default function Ecommerce() {
   const [evidenceUploading, setEvidenceUploading] = useState(false);
   const [evidenceSubmitting, setEvidenceSubmitting] = useState(false);
   const [isModeratorState, setIsModeratorState] = useState(false);
+  const [siteAnalytics, setSiteAnalytics] = useState<{ visitsByDay: { date: string; count: number }[]; accountsByDay: { date: string; count: number }[]; totalVisits: number; totalAccounts: number } | null>(null);
+  const [siteAnalyticsLoading, setSiteAnalyticsLoading] = useState(false);
   const [caseStatusMap, setCaseStatusMap] = useState<Record<number, { claimedBy: string | null; note: string }>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
@@ -313,6 +315,13 @@ export default function Ecommerce() {
   }, [isConnected]);
 
   useEffect(() => {
+    if (!isConnected || !address) return;
+    supabase.functions.invoke('site-analytics', {
+      body: { action: 'logWalletConnection', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+    }).catch(() => {});
+  }, [isConnected, address]);
+
+  useEffect(() => {
     setMounted(true);
     const seen = localStorage.getItem(ONBOARDING_SEEN_KEY);
     if (!seen) { setHelpModalOpen(true); localStorage.setItem(ONBOARDING_SEEN_KEY, 'true'); }
@@ -322,6 +331,15 @@ export default function Ecommerce() {
     }
     if (localStorage.getItem(PURCHASES_OPEN_KEY) === 'true') {
       setPurchasesOpen(true);
+    }
+
+    // One anonymous visit logged per browser tab session - not tied to a
+    // wallet, works even for someone who never connects at all.
+    if (!sessionStorage.getItem('openspace_visit_logged')) {
+      sessionStorage.setItem('openspace_visit_logged', 'true');
+      supabase.functions.invoke('site-analytics', {
+        body: { action: 'logVisit', contractAddress: MARKETPLACE_ADDRESS },
+      }).catch(() => {});
     }
     if (localStorage.getItem(DARK_MODE_KEY) === 'true') {
       setDarkMode(true);
@@ -1007,6 +1025,23 @@ export default function Ecommerce() {
       console.error('Moderator check failed:', e);
       return false;
     }
+  };
+
+  const loadSiteAnalytics = async () => {
+    if (!address) return;
+    setSiteAnalyticsLoading(true);
+    try {
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
+      const { data, error } = await supabase.functions.invoke('site-analytics', {
+        body: { action: 'getAnalytics', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, message: auth.message, signature: auth.signature, days: 30 },
+      });
+      if (error) { console.error('Failed to load site analytics:', error); return; }
+      setSiteAnalytics(data);
+    } catch (e) {
+      console.error('Failed to load site analytics:', e);
+    }
+    setSiteAnalyticsLoading(false);
   };
 
   const loadCaseStatus = async (orderIds: number[]) => {
@@ -2087,6 +2122,40 @@ export default function Ecommerce() {
                   <MiniStatChart value={stat.value} max={chartMax} color={stat.color} />
                 </div>
               ))}
+            </div>
+            <div className={`${cardBg} rounded-3xl p-6 border ${cardBorder} mb-10`}>
+              <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                <h3 className="font-semibold text-lg">Site Visits &amp; New Accounts</h3>
+                {!siteAnalytics && (
+                  <button onClick={loadSiteAnalytics} disabled={siteAnalyticsLoading} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50">
+                    {siteAnalyticsLoading ? 'Loading...' : 'Load Chart'}
+                  </button>
+                )}
+              </div>
+              <p className={`text-xs ${subtleText} mb-4`}>Last 30 days · Visits count anyone who loads the site, connected or not. Accounts count each wallet's first-ever connection.</p>
+              {siteAnalytics ? (
+                <>
+                  <div className="flex gap-6 mb-4">
+                    <div><p className={`text-xs ${subtleText}`}>Total visits</p><p className="text-2xl font-bold">{siteAnalytics.totalVisits}</p></div>
+                    <div><p className={`text-xs ${subtleText}`}>Total accounts</p><p className="text-2xl font-bold">{siteAnalytics.totalAccounts}</p></div>
+                  </div>
+                  <div className="w-full h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={siteAnalytics.visitsByDay.map((v, i) => ({ date: v.date.slice(5), visits: v.count, accounts: siteAnalytics.accountsByDay[i]?.count || 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: darkMode ? '#a1a1aa' : '#71717a' }} interval="preserveStartEnd" />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: darkMode ? '#a1a1aa' : '#71717a' }} />
+                        <Tooltip contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: 12, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 12 }} />
+                        <Line type="monotone" dataKey="visits" name="Visits" stroke="#38bdf8" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="accounts" name="New Accounts" stroke="#a3e635" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
+              ) : (
+                <p className={`text-sm ${subtleText} py-6 text-center`}>{siteAnalyticsLoading ? 'Loading...' : 'Click "Load Chart" to view visit and account trends.'}</p>
+              )}
             </div>
             <div className={`${cardBg} rounded-3xl p-6 border ${cardBorder} max-w-md`}>
               <h3 className="font-semibold text-lg mb-1">Platform Fee Wallet</h3>
