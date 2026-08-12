@@ -2114,12 +2114,29 @@ export default function Ecommerce() {
               <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">Platform<br /><span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Analytics.</span></h2>
               <p className={`${subtleText} text-base sm:text-lg`}>Live stats pulled directly from the smart contract.</p>
             </div>
+
+            <div className={`${cardBg} rounded-3xl p-6 border ${cardBorder} mb-6`}>
+              <h3 className="font-semibold text-lg mb-4">Marketplace Activity</h3>
+              <div className="w-full h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analyticsStats} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: darkMode ? '#a1a1aa' : '#71717a' }} interval={0} angle={-20} textAnchor="end" height={60} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: darkMode ? '#a1a1aa' : '#71717a' }} />
+                    <Tooltip contentStyle={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: 12, fontSize: 12 }} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {analyticsStats.map((stat) => (<Cell key={stat.label} fill={stat.color} />))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
               {analyticsStats.map((stat) => (
                 <div key={stat.label} className={`${cardBg} rounded-3xl p-6 border ${cardBorder}`}>
                   <p className={`text-xs ${subtleText} uppercase tracking-wide mb-2`}>{stat.label}</p>
-                  <p className="text-3xl font-bold">{stat.value}</p>
-                  <MiniStatChart value={stat.value} max={chartMax} color={stat.color} />
+                  <p className="text-3xl font-bold" style={{ color: stat.color }}>{stat.value}</p>
                 </div>
               ))}
             </div>
