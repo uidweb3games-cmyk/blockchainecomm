@@ -127,6 +127,7 @@ export default function Ecommerce() {
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'shop' | 'sell' | 'analytics'>('shop');
   const [sellSubTab, setSellSubTab] = useState<'list' | 'fulfill' | 'ads'>('list');
+
   const [sellPageMenuOpen, setSellPageMenuOpen] = useState(false);
   const [listMode, setListMode] = useState<'simple' | 'variants'>('simple');
   const [itemName, setItemName] = useState('');
@@ -336,10 +337,14 @@ export default function Ecommerce() {
 
     // Arriving from a seller storefront link (?item=ID) opens that item
     // directly instead of just landing on the generic shop page.
-    const itemParam = new URLSearchParams(window.location.search).get('item');
+    const urlParams = new URLSearchParams(window.location.search);
+    const itemParam = urlParams.get('item');
     if (itemParam && !isNaN(Number(itemParam))) {
       setActiveTab('shop');
       setQuickViewId(Number(itemParam));
+    }
+    if (urlParams.get('tab') === 'sell') {
+      setActiveTab('sell');
     }
 
     // One anonymous visit logged per browser tab session - not tied to a
@@ -1867,7 +1872,7 @@ export default function Ecommerce() {
                       🏪 {sellerProfile.shopName} <span className={`text-xs ${subtleText} font-normal`}>(edit)</span>
                     </button>
                     {address && (
-                      <Link href={`/seller/${address}`} target="_blank" className="text-xs text-lime-600 hover:text-lime-700 underline">
+                      <Link href={`/seller/${address}`} className="text-xs text-lime-600 hover:text-lime-700 underline">
                         View public storefront ↗
                       </Link>
                     )}
@@ -2514,7 +2519,7 @@ export default function Ecommerce() {
               </div>
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
               <div className="flex items-center gap-2 mb-3">
-                <Link href={`/seller/${quickViewListing.seller}`} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
                   <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
                   {quickViewSellerName ? (
                     <div>
