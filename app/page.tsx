@@ -367,6 +367,12 @@ export default function Ecommerce() {
     if (urlParams.get('tab') === 'sell') {
       setActiveTab('sell');
     }
+    // These URL instructions are meant to fire once, on arrival - clean the
+    // address bar right after reading them so a later refresh lands on a
+    // plain page instead of endlessly reopening the same item/tab.
+    if (itemParam || urlParams.get('tab')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
 
     // One anonymous visit logged per browser tab session - not tied to a
     // wallet, works even for someone who never connects at all.
