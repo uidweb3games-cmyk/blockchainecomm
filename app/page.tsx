@@ -126,7 +126,10 @@ export default function Ecommerce() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState<'shop' | 'sell' | 'analytics'>('shop');
-  const [sellSubTab, setSellSubTab] = useState<'list' | 'fulfill' | 'ads'>('list');
+  const [sellSubTab, setSellSubTab] = useState<'list' | 'fulfill' | 'ads' | 'history'>('list');
+  const [hiddenOrderIds, setHiddenOrderIds] = useState<Set<number>>(new Set());
+  const [historyFromDate, setHistoryFromDate] = useState('');
+  const [historyToDate, setHistoryToDate] = useState('');
 
   const [sellPageMenuOpen, setSellPageMenuOpen] = useState(false);
   const [listMode, setListMode] = useState<'simple' | 'variants'>('simple');
@@ -496,11 +499,11 @@ export default function Ecommerce() {
   const featuredFlagContracts = Array.from({ length: lCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'isFeatured' as const, args: [BigInt(i + 1)] as const }));
   const orderContracts = Array.from({ length: oCount }, (_, i) => ({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getOrder' as const, args: [BigInt(i + 1)] as const }));
 
-  const { data: listingsData } = useReadContracts({ contracts: listingContracts, query: { enabled: lCount > 0 } });
+  const { data: listingsData, refetch: refetchListings } = useReadContracts({ contracts: listingContracts, query: { enabled: lCount > 0 } });
   const { data: variantsData } = useReadContracts({ contracts: variantContracts, query: { enabled: lCount > 0 } });
-  const { data: stockData } = useReadContracts({ contracts: stockContracts, query: { enabled: lCount > 0 } });
+  const { data: stockData, refetch: refetchStock } = useReadContracts({ contracts: stockContracts, query: { enabled: lCount > 0 } });
   const { data: featuredFlagData } = useReadContracts({ contracts: featuredFlagContracts, query: { enabled: lCount > 0 } });
-  const { data: ordersData } = useReadContracts({ contracts: orderContracts, query: { enabled: oCount > 0 } });
+  const { data: ordersData, refetch: refetchOrders } = useReadContracts({ contracts: orderContracts, query: { enabled: oCount > 0 } });
 
   const isAdmin = address && adminAddress && address.toLowerCase() === (adminAddress as string).toLowerCase();
 
@@ -691,6 +694,33 @@ export default function Ecommerce() {
     setSellerShipAuth(null);
   }, [address]);
 
+  // Which sold/history orders a seller has chosen to hide from their own
+  // view - purely a personal display preference, kept in localStorage per
+  // wallet rather than on-chain or in Supabase, since it doesn't need to
+  // sync across devices or be seen by anyone else.
+  useEffect(() => {
+    if (!address) { setHiddenOrderIds(new Set()); return; }
+    const raw = localStorage.getItem(`openspace_hidden_orders_${address.toLowerCase()}`);
+    if (raw) { try { setHiddenOrderIds(new Set(JSON.parse(raw))); } catch (e) {} }
+    else setHiddenOrderIds(new Set());
+  }, [address]);
+
+  const hideOrderFromHistory = (orderId: number) => {
+    if (!address) return;
+    setHiddenOrderIds((prev) => {
+      const next = new Set(prev);
+      next.add(orderId);
+      localStorage.setItem(`openspace_hidden_orders_${address.toLowerCase()}`, JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
+  const unhideAllOrders = () => {
+    if (!address) return;
+    setHiddenOrderIds(new Set());
+    localStorage.setItem(`openspace_hidden_orders_${address.toLowerCase()}`, JSON.stringify([]));
+  };
+
   const saveShippingInfoForOrders = async (orderIds: number[], info: ShippingInfo, sellerAddresses: Record<number, string>) => {
     if (!address || orderIds.length === 0) return;
     try {
@@ -748,6 +778,24 @@ export default function Ecommerce() {
       setResolveCenterOpen(false);
     }
   }, [txConfirmed, resolvingDispute]);
+
+  // Whenever ANY transaction confirms - releasing funds, cancelling,
+  // resolving a dispute, delisting, editing stock, updating shipping status,
+  // subscribing to ads, and so on - the on-chain data has genuinely changed,
+  // but the app's cached copy of it doesn't know that on its own. This
+  // re-reads everything relevant so the screen updates itself immediately,
+  // instead of quietly showing stale info until someone refreshes manually.
+  const txConfirmedRef = useRef(false);
+  useEffect(() => {
+    if (txConfirmed && !txConfirmedRef.current) {
+      txConfirmedRef.current = true;
+      refetchOrders();
+      refetchListings();
+      refetchStock();
+    } else if (!txConfirmed) {
+      txConfirmedRef.current = false;
+    }
+  }, [txConfirmed, refetchOrders, refetchListings, refetchStock]);
 
   // ---------- ENCRYPTED CHAT + DISPUTE EVIDENCE ----------
   // Chat messages are scrambled in the browser before they're ever sent
@@ -1590,8 +1638,19 @@ export default function Ecommerce() {
   const myListings = isConnected ? allListings.filter((l) => l.seller.toLowerCase() === address?.toLowerCase() && !l.delisted) : [];
   const myOrdersToFulfill = isConnected ? allOrders.filter((o) => {
     const listing = getListingById(o.listingId);
-    return listing && listing.seller.toLowerCase() === address?.toLowerCase();
+    return listing && listing.seller.toLowerCase() === address?.toLowerCase() && !o.released && !o.cancelled;
   }) : [];
+  const historyFromTs = historyFromDate ? new Date(historyFromDate).getTime() / 1000 : null;
+  const historyToTs = historyToDate ? new Date(historyToDate).getTime() / 1000 + 86400 : null; // include the whole end day
+  const mySoldHistory = isConnected ? allOrders.filter((o) => {
+    const listing = getListingById(o.listingId);
+    if (!listing || listing.seller.toLowerCase() !== address?.toLowerCase()) return false;
+    if (!(o.released || o.cancelled)) return false;
+    if (hiddenOrderIds.has(o.id)) return false;
+    if (historyFromTs !== null && Number(o.purchaseTime) < historyFromTs) return false;
+    if (historyToTs !== null && Number(o.purchaseTime) > historyToTs) return false;
+    return true;
+  }).sort((a, b) => Number(b.purchaseTime) - Number(a.purchaseTime)) : [];
   const myPurchases = isConnected ? allOrders.filter((o) => o.buyer.toLowerCase() === address?.toLowerCase()) : [];
   const disputeEligible = isConnected ? allOrders.filter((o) => {
     const listing = getListingById(o.listingId);
@@ -1624,6 +1683,7 @@ export default function Ecommerce() {
   const qvColorReady = !qvHasColors || !!pickedColor;
   const qvSizeReady = !qvHasSizes || !!pickedSize;
   const canAddQuickViewToCart = quickViewListing && (!quickViewListing.hasVariants || (qvColorReady && qvSizeReady && getQvStock(qvHasColors ? pickedColor : NO_VARIANT, qvHasSizes ? pickedSize : NO_VARIANT) > 0));
+  const isOwnQuickViewListing = quickViewListing && address && quickViewListing.seller.toLowerCase() === address.toLowerCase();
 
   const renderShopThumb = (listing: Listing) => {
     const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
@@ -2030,7 +2090,7 @@ export default function Ecommerce() {
               {isConnected && sellerProfile && (
                 <div className="relative">
                   <button onClick={() => setSellPageMenuOpen((v) => !v)} className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
-                    {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : '📢 Sponsored Ads'}
+                    {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : sellSubTab === 'history' ? '📜 Sold History' : '📢 Sponsored Ads'}
                     <span className="text-xs">▾</span>
                   </button>
                   {sellPageMenuOpen && (
@@ -2039,6 +2099,7 @@ export default function Ecommerce() {
                       <div className={`absolute right-0 mt-2 w-56 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
                         <button onClick={() => { setSellSubTab('list'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'list' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📝 List an Item</button>
                         <button onClick={() => { setSellSubTab('fulfill'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'fulfill' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📦 Orders to Fulfill {myOrdersToFulfill.length > 0 ? `(${myOrdersToFulfill.length})` : ''}</button>
+                        <button onClick={() => { setSellSubTab('history'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'history' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📜 Sold History {mySoldHistory.length > 0 ? `(${mySoldHistory.length})` : ''}</button>
                         <button onClick={() => { setSellSubTab('ads'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'ads' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📢 Sponsored Ads</button>
                       </div>
                     </>
@@ -2291,10 +2352,50 @@ export default function Ecommerce() {
                       )}
                     </div>
                     {myOrdersToFulfill.length === 0 ? (
-                      <p className={subtleText}>No orders yet.</p>
+                      <p className={subtleText}>No orders currently need action.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                         {myOrdersToFulfill.map((order) => renderOrderCard(order, 'seller'))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {sellSubTab === 'history' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                      <h3 className="font-semibold text-lg">Sold History</h3>
+                      {hiddenOrderIds.size > 0 && (
+                        <button onClick={unhideAllOrders} className={`text-xs ${subtleText} underline`}>
+                          {hiddenOrderIds.size} hidden — show all
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mb-5 flex-wrap">
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>From</label>
+                        <input type="date" value={historyFromDate} onChange={(e) => setHistoryFromDate(e.target.value)} className={`${inputBg} border ${cardBorder} rounded-xl px-3 py-2 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                      </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>To</label>
+                        <input type="date" value={historyToDate} onChange={(e) => setHistoryToDate(e.target.value)} className={`${inputBg} border ${cardBorder} rounded-xl px-3 py-2 outline-none focus:border-lime-400 transition-colors text-sm`} />
+                      </div>
+                      {(historyFromDate || historyToDate) && (
+                        <button onClick={() => { setHistoryFromDate(''); setHistoryToDate(''); }} className={`text-xs ${subtleText} underline self-end mb-2`}>Clear dates</button>
+                      )}
+                    </div>
+                    {mySoldHistory.length === 0 ? (
+                      <p className={subtleText}>{historyFromDate || historyToDate ? 'No sold orders in that date range.' : 'No completed or cancelled orders yet.'}</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {mySoldHistory.map((order) => (
+                          <div key={order.id}>
+                            {renderOrderCard(order, 'seller')}
+                            <button onClick={() => hideOrderFromHistory(order.id)} className={`mt-2 w-full py-1.5 text-xs font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}>
+                              Hide from history
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -2751,13 +2852,25 @@ export default function Ecommerce() {
                 <p className={`text-xs ${subtleText} mb-5`}>{quickViewListing.simpleStock.toString()} in stock</p>
               )}
 
-              <button
-                disabled={!canAddQuickViewToCart}
-                onClick={() => { addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : ''); setQuickViewId(null); }}
-                className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-40"
-              >
-                {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (!qvColorReady ? 'Select a color' : 'Select a size') : 'Add to Cart'}
-              </button>
+              {isOwnQuickViewListing ? (
+                <div>
+                  <p className={`text-xs ${subtleText} text-center mb-3`}>This is your own listing.</p>
+                  <button
+                    onClick={() => { setQuickViewId(null); setActiveTab('sell'); setSellSubTab('list'); openEditListing(quickViewListing); }}
+                    className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all"
+                  >
+                    Edit This Listing
+                  </button>
+                </div>
+              ) : (
+                <button
+                  disabled={!canAddQuickViewToCart}
+                  onClick={() => { addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : ''); setQuickViewId(null); }}
+                  className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-40"
+                >
+                  {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (!qvColorReady ? 'Select a color' : 'Select a size') : 'Add to Cart'}
+                </button>
+              )}
             </div>
           </div>
         </div>

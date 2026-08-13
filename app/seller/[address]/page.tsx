@@ -149,7 +149,7 @@ export default function SellerStorefrontPage() {
                   return (
                     <Link
                       key={listing.id}
-                      href={`/?item=${listing.id}`}
+                      href={`/?item=${listing.id}${cameFromOwnDashboard ? '&tab=sell' : ''}`}
                       className="group text-left bg-white rounded-2xl overflow-hidden border border-zinc-200 hover:border-lime-400/60 transition-all duration-300"
                     >
                       <div className="w-full aspect-square bg-zinc-100 overflow-hidden">
