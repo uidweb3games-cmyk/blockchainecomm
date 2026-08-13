@@ -220,6 +220,11 @@ export default function Ecommerce() {
   const [chatReadAuth, setChatReadAuth] = useState<{ address: string; message: string; signature: string } | null>(null);
   const [evidenceModalOrderId, setEvidenceModalOrderId] = useState<number | null>(null);
   const [evidenceMap, setEvidenceMap] = useState<Record<number, EvidenceItem[]>>({});
+  const [reviewModalOrderId, setReviewModalOrderId] = useState<number | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string }[]>>({});
   const [evidenceNote, setEvidenceNote] = useState('');
   const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
   const [evidenceUploading, setEvidenceUploading] = useState(false);
@@ -979,6 +984,52 @@ export default function Ecommerce() {
     e.target.value = '';
   };
 
+  // ---------- REVIEWS ----------
+  // Public to read (any buyer browsing a store should see them), signature-
+  // gated to submit/edit - reuses the same session signature as chat/evidence.
+  const loadSellerReviews = async (sellerAddress: string) => {
+    const { data, error } = await supabase.functions.invoke('reviews', {
+      body: { action: 'getReviews', contractAddress: MARKETPLACE_ADDRESS, sellerAddress },
+    });
+    if (error) { console.error('Failed to load reviews:', error); return; }
+    const rows = (data?.data || []).map((r: any) => ({
+      orderId: r.order_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at,
+    }));
+    setSellerReviewsMap((prev) => ({ ...prev, [sellerAddress.toLowerCase()]: rows }));
+  };
+
+  const openReviewModal = (orderId: number, sellerAddress: string) => {
+    const existing = (sellerReviewsMap[sellerAddress.toLowerCase()] || []).find((r) => r.orderId === orderId);
+    setReviewRating(existing?.rating || 0);
+    setReviewText(existing?.reviewText || '');
+    setReviewModalOrderId(orderId);
+  };
+
+  const submitReview = async (orderId: number, listingId: number, sellerAddress: string) => {
+    if (!address || reviewRating < 1) { alert('Please pick a star rating.'); return; }
+    setReviewSubmitting(true);
+    try {
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
+      const { error } = await supabase.functions.invoke('reviews', {
+        body: { action: 'submitReview', contractAddress: MARKETPLACE_ADDRESS, orderId, listingId, sellerAddress, rating: reviewRating, reviewText: reviewText.trim(), walletAddress: address, message: auth.message, signature: auth.signature },
+      });
+      if (error) { console.error('Failed to submit review:', error); alert('Failed to submit review. Please try again.'); return; }
+      await loadSellerReviews(sellerAddress);
+      setReviewModalOrderId(null);
+    } catch (e) {
+      console.error('Failed to submit review:', e);
+    }
+    setReviewSubmitting(false);
+  };
+
+  const getSellerRatingSummary = (sellerAddress: string): { average: number; count: number } | null => {
+    const reviews = sellerReviewsMap[sellerAddress.toLowerCase()];
+    if (!reviews || reviews.length === 0) return null;
+    const average = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    return { average, count: reviews.length };
+  };
+
   const [chatUnavailable, setChatUnavailable] = useState<number | null>(null);
   const [chatActivityMap, setChatActivityMap] = useState<Record<number, string>>({});
   const [chatSeenMap, setChatSeenMap] = useState<Record<number, string>>({});
@@ -1192,6 +1243,8 @@ export default function Ecommerce() {
     }).then(({ data, error }) => {
       if (!error && data?.data?.shop_name) setQuickViewSellerName(data.data.shop_name);
     }).catch(() => {});
+    loadSellerReviews(sellerAddr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickViewListing?.seller]);
 
   // ---------- LISTING FORM ----------
@@ -1605,7 +1658,21 @@ export default function Ecommerce() {
     const isSeller = isConnected && address?.toLowerCase() === listing.seller.toLowerCase();
 
     const statusOrActions = () => {
-      if (order.released) return <div className={`w-full py-2.5 text-center ${darkMode ? 'bg-white/5 text-zinc-500' : 'bg-zinc-100 text-zinc-500'} rounded-2xl font-medium border ${cardBorder}`}>Completed</div>;
+      if (order.released) {
+        const myReview = context === 'buyer' && isBuyer
+          ? (sellerReviewsMap[listing.seller.toLowerCase()] || []).find((r) => r.orderId === order.id)
+          : undefined;
+        return (
+          <div className="space-y-2">
+            <div className={`w-full py-2.5 text-center ${darkMode ? 'bg-white/5 text-zinc-500' : 'bg-zinc-100 text-zinc-500'} rounded-2xl font-medium border ${cardBorder}`}>Completed</div>
+            {context === 'buyer' && isBuyer && (
+              <button onClick={() => openReviewModal(order.id, listing.seller)} className={`w-full py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}>
+                {myReview ? `⭐ Edit Your Review (${myReview.rating}★)` : '⭐ Leave a Review'}
+              </button>
+            )}
+          </div>
+        );
+      }
       if (order.cancelled) return <div className={`w-full py-2.5 text-center ${darkMode ? 'bg-white/5 text-zinc-500' : 'bg-zinc-100 text-zinc-500'} rounded-2xl font-medium border ${cardBorder}`}>Cancelled</div>;
       if (order.disputed) return <div className="w-full py-2 text-center bg-amber-400/20 text-amber-600 rounded-2xl font-medium border border-amber-400/40 text-sm">⚠ Under Dispute</div>;
       if (context === 'buyer' && isBuyer) {
@@ -1788,7 +1855,7 @@ export default function Ecommerce() {
                               <span className="text-sm font-bold text-amber-500">{myPoints}</span>
                               <span className={`text-xs ${subtleText}`}>points</span>
                             </div>
-                            <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); Array.from(new Set(myPurchases.map((o) => getListingById(o.listingId)?.seller).filter((s): s is string => !!s))).forEach((s) => loadSellerReviews(s)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               📦 My Purchases {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
                             </button>
                             <button onClick={() => { setReferralModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🎁 Refer &amp; Earn</button>
@@ -2604,6 +2671,15 @@ export default function Ecommerce() {
                   <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-sky-400/10 text-sky-600 border border-sky-400/30">✓ Verified Seller</span>
                 )}
               </div>
+              {(() => {
+                const summary = getSellerRatingSummary(quickViewListing.seller);
+                return summary ? (
+                  <p className={`text-xs ${subtleText} mb-2 flex items-center gap-1`}>
+                    <span className="text-amber-400">{'★'.repeat(Math.round(summary.average))}{'☆'.repeat(5 - Math.round(summary.average))}</span>
+                    {summary.average.toFixed(1)} ({summary.count} review{summary.count === 1 ? '' : 's'})
+                  </p>
+                ) : null;
+              })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
               <div className="flex items-center gap-2 mb-3">
                 <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -2818,6 +2894,40 @@ export default function Ecommerce() {
                   {chatSending ? '...' : 'Send'}
                 </button>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {reviewModalOrderId !== null && (() => {
+        const order = allOrders.find((o) => o.id === reviewModalOrderId);
+        const listing = order ? getListingById(order.listingId) : null;
+        if (!order || !listing) return null;
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setReviewModalOrderId(null)}>
+            <div className={`${cardBg} rounded-3xl w-full max-w-sm border ${cardBorder} p-6`} onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-semibold text-lg">Leave a Review</h3>
+                <button onClick={() => setReviewModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
+              </div>
+              <p className={`text-xs ${subtleText} mb-4`}>{listing.name}</p>
+              <div className="flex justify-center gap-1 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button key={star} onClick={() => setReviewRating(star)} className="text-3xl leading-none transition-transform hover:scale-110">
+                    {star <= reviewRating ? <span className="text-amber-400">★</span> : <span className={subtleText}>☆</span>}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={reviewText}
+                onChange={(e) => setReviewText(e.target.value)}
+                placeholder="How was your experience with this seller? (optional)"
+                rows={3}
+                className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm resize-none mb-4`}
+              />
+              <button onClick={() => submitReview(order.id, listing.id, listing.seller)} disabled={reviewSubmitting || reviewRating < 1} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+                {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+              </button>
             </div>
           </div>
         );
