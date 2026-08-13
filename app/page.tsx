@@ -107,7 +107,19 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 }
 
 function OpenSpaceLogo({ className }: { className?: string }) {
-  return <img src="/logo.png" alt="OpenSpace" className={className} style={{ objectFit: 'contain', width: 'auto' }} />;
+  return (
+    <svg viewBox="0 0 520 260" className={className} xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a3e635" />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+      </defs>
+      <path d="M 162 106 A 78 78 0 1 0 162 174" fill="none" stroke="url(#osGrad)" strokeWidth="24" strokeLinecap="round" />
+      <text x="172" y="105" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" fill="url(#osGrad)">PEN</text>
+      <text x="78" y="165" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" letterSpacing="1" fill="url(#osGrad)">SPACE</text>
+    </svg>
+  );
 }
 
 export default function Ecommerce() {
