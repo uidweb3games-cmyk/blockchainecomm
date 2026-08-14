@@ -21,12 +21,14 @@ const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
 const ACTIVE_TAB_KEY = 'openspace_active_tab';
 const DARK_MODE_KEY = 'openspace_dark_mode';
 const PURCHASES_OPEN_KEY = 'openspace_purchases_open';
+const CART_STORAGE_KEY = 'openspace_cart';
+const CART_CURRENCY_STORAGE_KEY = 'openspace_cart_currency';
 const NO_VARIANT = '';
 
-const CATEGORIES = ['Electronics', 'Gadget', 'Clothing', 'Shoes', 'Home & Furniture', 'Beauty & Health', 'Toys & Games', 'Other'];
+const CATEGORIES = ['Electronics', 'Gadget', 'Clothing', 'Shoes', 'Accessories', 'Home & Furniture', 'Kitchen Items', 'Groceries & Essentials', 'Beauty & Health', 'Sports & Outdoors', 'Toys & Games', 'Other'];
 const CATEGORY_ICONS: Record<string, string> = {
-  'Electronics': '📱', 'Gadget': '⌚', 'Clothing': '👕', 'Shoes': '👟',
-  'Home & Furniture': '🛋️', 'Beauty & Health': '💄', 'Toys & Games': '🎮', 'Other': '🏷️',
+  'Electronics': '📱', 'Gadget': '⌚', 'Clothing': '👕', 'Shoes': '👟', 'Accessories': '👜',
+  'Home & Furniture': '🛋️', 'Kitchen Items': '🍳', 'Groceries & Essentials': '🛒', 'Beauty & Health': '💄', 'Sports & Outdoors': '⚽', 'Toys & Games': '🎮', 'Other': '🏷️',
 };
 
 const LIST_CURRENCIES: Record<string, { label: string; address: string; symbol: string }> = {
@@ -150,6 +152,10 @@ export default function Ecommerce() {
   const [editPrice, setEditPrice] = useState('');
   const [editStock, setEditStock] = useState('');
   const [editVariantStock, setEditVariantStock] = useState<Record<string, string>>({});
+  const [editColorImages, setEditColorImages] = useState<Record<string, string>>({});
+  const [editQueue, setEditQueue] = useState<{ functionName: string; args: any[] }[]>([]);
+  const [editQueueTotal, setEditQueueTotal] = useState(0);
+  const [editQueueRunning, setEditQueueRunning] = useState(false);
   const [selectedFeaturedIds, setSelectedFeaturedIds] = useState<number[]>([]);
   const [featuredPickerInitialized, setFeaturedPickerInitialized] = useState(false);
   const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
@@ -356,6 +362,19 @@ export default function Ecommerce() {
       setPurchasesOpen(true);
     }
 
+    // Restore whatever was in the cart from a previous visit - shoppers who
+    // aren't ready to check out yet shouldn't have to re-find everything
+    // just because they closed the tab.
+    const savedCartRaw = localStorage.getItem(CART_STORAGE_KEY);
+    if (savedCartRaw) {
+      try {
+        const parsed = JSON.parse(savedCartRaw);
+        if (Array.isArray(parsed)) setCart(parsed);
+      } catch (e) {}
+    }
+    const savedCartCurrency = localStorage.getItem(CART_CURRENCY_STORAGE_KEY);
+    if (savedCartCurrency) setCartCurrency(savedCartCurrency);
+
     // Arriving from a seller storefront link (?item=ID) opens that item
     // directly instead of just landing on the generic shop page.
     const urlParams = new URLSearchParams(window.location.search);
@@ -406,6 +425,18 @@ export default function Ecommerce() {
     if (!mounted) return;
     localStorage.setItem(PURCHASES_OPEN_KEY, purchasesOpen ? 'true' : 'false');
   }, [purchasesOpen, mounted]);
+
+  // Persist the cart itself so closing the tab/site never silently empties
+  // it - only an explicit "Clear Cart" or completing checkout should do that.
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    if (cartCurrency) {
+      localStorage.setItem(CART_CURRENCY_STORAGE_KEY, cartCurrency);
+    } else {
+      localStorage.removeItem(CART_CURRENCY_STORAGE_KEY);
+    }
+  }, [cart, cartCurrency, mounted]);
 
   const { disconnect } = useDisconnect();
   const { writeContract, isPending, data: txHash } = useWriteContract();
@@ -784,6 +815,27 @@ export default function Ecommerce() {
       setResolveCenterOpen(false);
     }
   }, [txConfirmed, resolvingDispute]);
+
+  // Runs the edit-listing queue one transaction at a time: fires the next
+  // queued call only after the previous one actually confirms on-chain,
+  // instead of firing every change at once and losing track of all but the
+  // last signature. Only closes the modal once every queued change is done.
+  useEffect(() => {
+    if (!(txConfirmed && editQueueRunning)) return;
+    setEditQueue((prev) => {
+      const remaining = prev.slice(1);
+      if (remaining.length > 0) {
+        const next = remaining[0];
+        call(next.functionName, next.args);
+        return remaining;
+      }
+      setEditQueueRunning(false);
+      setEditQueueTotal(0);
+      setEditingListingId(null);
+      return [];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed, editQueueRunning]);
 
   // Whenever ANY transaction confirms - releasing funds, cancelling,
   // resolving a dispute, delisting, editing stock, updating shipping status,
@@ -1348,6 +1400,10 @@ export default function Ecommerce() {
     setEditPrice((Number(listing.price) / 1e18).toString());
     setEditStock(listing.hasVariants ? '' : listing.simpleStock.toString());
     setEditVariantStock({});
+    setEditColorImages({});
+    setEditQueue([]);
+    setEditQueueTotal(0);
+    setEditQueueRunning(false);
   };
 
   const editingListing = editingListingId ? getListingById(editingListingId) : null;
@@ -1358,9 +1414,26 @@ export default function Ecommerce() {
     : [];
   const { data: editVariantStockData } = useReadContracts({ contracts: editVariantStockContracts, query: { enabled: editVariantStockContracts.length > 0 } });
 
+  // Existing per-color images for the listing being edited, so the edit
+  // modal can show and let the seller change them - the same way they're
+  // set up when the item is first listed.
+  const editColorImageContracts = editingListing && editingListing.hasVariants
+    ? editingListing.colors.map((c) => ({
+        address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'getColorImage' as const, args: [BigInt(editingListing.id), c] as const,
+      }))
+    : [];
+  const { data: editColorImageData } = useReadContracts({ contracts: editColorImageContracts, query: { enabled: editColorImageContracts.length > 0 } });
+
   const getEditVariantStockValue = (color: string, size: string): string => {
     const key = `${color}|${size}`;
     if (editVariantStock[key] !== undefined) return editVariantStock[key];
+    return getOriginalVariantStockValue(color, size);
+  };
+
+  // Reads ONLY the on-chain value, ignoring any unsaved draft - used to
+  // detect whether a field actually changed before including it in the
+  // save queue, so we never fire a transaction for a value nobody touched.
+  const getOriginalVariantStockValue = (color: string, size: string): string => {
     if (!editingListing || !editVariantStockData) return '';
     const ci = editingListing.colors.indexOf(color);
     const si = editingListing.sizes.indexOf(size);
@@ -1369,23 +1442,63 @@ export default function Ecommerce() {
     return r && r.status === 'success' && r.result !== undefined ? String(r.result) : '';
   };
 
+  const getEditColorImageValue = (color: string): string => {
+    if (editColorImages[color] !== undefined) return editColorImages[color];
+    return getOriginalColorImageValue(color);
+  };
+
+  const getOriginalColorImageValue = (color: string): string => {
+    if (!editingListing || !editColorImageData) return '';
+    const ci = editingListing.colors.indexOf(color);
+    const r = editColorImageData[ci];
+    return r && r.status === 'success' && typeof r.result === 'string' ? r.result : '';
+  };
+
   const saveEditListing = () => {
     if (!editingListingId) return;
     if (!editName.trim() || !editPrice || Number(editPrice) <= 0) { alert('Please enter a valid name and price'); return; }
-    const priceInWei = parseEther(editPrice);
-    call('updateListing', [BigInt(editingListingId), editName.trim(), editImage.trim(), editCategory, priceInWei]);
     const listing = getListingById(editingListingId);
-    if (listing && !listing.hasVariants && editStock && Number(editStock) >= 0) {
-      call('updateSimpleStock', [BigInt(editingListingId), BigInt(editStock)]);
+    if (!listing) return;
+
+    const priceInWei = parseEther(editPrice);
+    const queue: { functionName: string; args: any[] }[] = [];
+
+    // Only queue the core details update if something in it actually
+    // changed - editing just the stock shouldn't also resend an identical
+    // name/image/category/price and cost an extra confirmation for nothing.
+    const nameChanged = editName.trim() !== listing.name;
+    const imageChanged = editImage.trim() !== listing.imageUrl;
+    const categoryChanged = editCategory !== listing.category;
+    const priceChanged = priceInWei !== listing.price;
+    if (nameChanged || imageChanged || categoryChanged || priceChanged) {
+      queue.push({ functionName: 'updateListing', args: [BigInt(editingListingId), editName.trim(), editImage.trim(), editCategory, priceInWei] });
     }
-    if (listing && listing.hasVariants) {
+
+    if (!listing.hasVariants) {
+      const currentStock = listing.simpleStock.toString();
+      if (editStock !== '' && editStock !== currentStock && Number(editStock) >= 0) {
+        queue.push({ functionName: 'updateSimpleStock', args: [BigInt(editingListingId), BigInt(editStock)] });
+      }
+    } else {
       Object.entries(editVariantStock).forEach(([key, val]) => {
         if (val === '' || Number(val) < 0) return;
         const [color, size] = key.split('|');
-        call('updateVariantStock', [BigInt(editingListingId), color, size, BigInt(val)]);
+        if (val === getOriginalVariantStockValue(color, size)) return;
+        queue.push({ functionName: 'updateVariantStock', args: [BigInt(editingListingId), color, size, BigInt(val)] });
+      });
+      listing.colors.forEach((c) => {
+        const draft = editColorImages[c];
+        if (draft === undefined) return;
+        if (draft.trim() === getOriginalColorImageValue(c)) return;
+        queue.push({ functionName: 'updateColorImage', args: [BigInt(editingListingId), c, draft.trim()] });
       });
     }
-    setEditingListingId(null);
+
+    if (queue.length === 0) { setEditingListingId(null); return; }
+    setEditQueueTotal(queue.length);
+    setEditQueue(queue);
+    setEditQueueRunning(true);
+    call(queue[0].functionName, queue[0].args);
   };
 
   // ---------- ADS: SUBSCRIPTION + FEATURED PICKER ----------
@@ -1446,7 +1559,7 @@ export default function Ecommerce() {
   const toggleFeaturedSelection = (listingId: number) => {
     setSelectedFeaturedIds((prev) => {
       if (prev.includes(listingId)) return prev.filter((id) => id !== listingId);
-      if (prev.length >= 5) { alert('You can feature up to 5 items at a time.'); return prev; }
+      if (prev.length >= 3) { alert('You can feature up to 3 items at a time.'); return prev; }
       return [...prev, listingId];
     });
   };
@@ -2311,7 +2424,7 @@ export default function Ecommerce() {
                     <h3 className="font-semibold text-lg mb-1">Sponsored Ads</h3>
                     {!mySubscriptionActive ? (
                       <>
-                        <p className={`text-sm ${subtleText} mb-4`}>Subscribe to feature up to 5 of your items in the Sponsored strip at the top of the shop for {adSubscriptionDurationSeconds ? Math.round(adSubscriptionDurationSeconds / 86400) : '...'} days.</p>
+                        <p className={`text-sm ${subtleText} mb-4`}>Subscribe to feature up to 3 of your items in the Sponsored strip at the top of the shop for {adSubscriptionDurationSeconds ? Math.round(adSubscriptionDurationSeconds / 86400) : '...'} days.</p>
                         <button onClick={handleSubscribeToAds} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
                           {isPending ? 'Confirm in wallet...' : `Subscribe for ${formatEther(adSubscriptionFeeWei)} tBNB`}
                         </button>
@@ -2319,7 +2432,7 @@ export default function Ecommerce() {
                     ) : (
                       <>
                         <p className={`text-sm ${subtleText} mb-4`}>
-                          Your ad subscription is active until {new Date(mySubscriptionExpiry * 1000).toLocaleDateString()}. Pick up to 5 of your items to feature — you can change this selection anytime while subscribed.
+                          Your ad subscription is active until {new Date(mySubscriptionExpiry * 1000).toLocaleDateString()}. Pick up to 3 of your items to feature — you can change this selection as often as you like while subscribed.
                         </p>
                         {myListings.length === 0 ? (
                           <p className={`text-sm ${subtleText} mb-4`}>List an item first to feature it.</p>
@@ -2634,35 +2747,67 @@ export default function Ecommerce() {
                 <div><label className={`text-xs ${subtleText} block mb-1`}>Stock Quantity</label><input type="number" min="0" step="1" value={editStock} onChange={(e) => setEditStock(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               )}
               {editingListingId !== null && getListingById(editingListingId)?.hasVariants && (
-                <div>
-                  <label className={`text-xs ${subtleText} block mb-2`}>Stock per color/size</label>
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {getListingById(editingListingId)!.colors.map((c) => (
-                      <div key={c}>
-                        <p className="text-xs font-semibold mb-1">{c}</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          {getListingById(editingListingId)!.sizes.map((s) => {
-                            const key = `${c}|${s}`;
-                            return (
-                              <div key={key} className="flex items-center gap-2">
-                                <span className={`text-xs ${subtleText} w-10 shrink-0`}>{s}</span>
-                                <input
-                                  type="number" min="0" step="1"
-                                  value={getEditVariantStockValue(c, s)}
-                                  onChange={(e) => setEditVariantStock((prev) => ({ ...prev, [key]: e.target.value }))}
-                                  className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-sm outline-none focus:border-lime-400 transition-colors`}
-                                />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+                <>
+                  <div className={`p-3 rounded-xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>
+                    <p className={`text-xs ${subtleText}`}>
+                      You can update stock and photos for the colors/sizes already on this listing below. Adding a brand-new color or size isn't supported once an item is listed — the contract fixes the variant list at creation. To add new variants, remove this listing and create a new one with the full set of colors/sizes you want.
+                    </p>
                   </div>
-                </div>
+                  <div>
+                    <label className={`text-xs ${subtleText} block mb-2`}>Stock per color/size</label>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {getListingById(editingListingId)!.colors.map((c) => (
+                        <div key={c}>
+                          <p className="text-xs font-semibold mb-1">{c}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {getListingById(editingListingId)!.sizes.map((s) => {
+                              const key = `${c}|${s}`;
+                              return (
+                                <div key={key} className="flex items-center gap-2">
+                                  <span className={`text-xs ${subtleText} w-10 shrink-0`}>{s}</span>
+                                  <input
+                                    type="number" min="0" step="1"
+                                    value={getEditVariantStockValue(c, s)}
+                                    onChange={(e) => setEditVariantStock((prev) => ({ ...prev, [key]: e.target.value }))}
+                                    className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-sm outline-none focus:border-lime-400 transition-colors`}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={`text-xs ${subtleText} block mb-2`}>Photo per color (optional - falls back to the main image above)</label>
+                    <div className="space-y-2">
+                      {getListingById(editingListingId)!.colors.map((c) => (
+                        <div key={c} className="flex items-center gap-2">
+                          <span className={`text-xs ${subtleText} w-16 shrink-0`}>{c}</span>
+                          <input
+                            type="text"
+                            value={getEditColorImageValue(c)}
+                            onChange={(e) => setEditColorImages((prev) => ({ ...prev, [c]: e.target.value }))}
+                            placeholder="https://..."
+                            className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-3 py-2 text-sm outline-none focus:border-lime-400 transition-colors`}
+                          />
+                          <label className={`shrink-0 px-2 py-2 rounded-lg border ${cardBorder} text-xs cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            {uploadingKey === `edit-color-${c}` ? '...' : '📷'}
+                            <input type="file" accept="image/*" className="hidden" disabled={uploadingKey === `edit-color-${c}`} onChange={(e) => handleImageFileChange(e, (url) => setEditColorImages((prev) => ({ ...prev, [c]: url })), `edit-color-${c}`)} />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
-            <button onClick={saveEditListing} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">{isPending ? 'Confirm in wallet...' : 'Save Changes'}</button>
+            <button onClick={saveEditListing} disabled={isPending || editQueueRunning} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+              {editQueueRunning
+                ? `Confirm in wallet... (${editQueueTotal - editQueue.length + 1}/${editQueueTotal})`
+                : isPending ? 'Confirm in wallet...' : 'Save Changes'}
+            </button>
           </div>
         </div>
       )}
