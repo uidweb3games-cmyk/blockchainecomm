@@ -2433,7 +2433,7 @@ export default function Ecommerce() {
 
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative">
-              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
+              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 💱
               </button>
               {currencyMenuOpen && (
@@ -2450,14 +2450,14 @@ export default function Ecommerce() {
               )}
             </div>
 
-            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-md shadow-sky-400/30">
-              <TrolleyIcon className="w-5 h-5" />
+            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform">
+              <TrolleyIcon className="w-6 h-6" />
               {cart.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>)}
             </button>
 
             {isConnected && (
               <div className="relative">
-                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
+                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                   🔔
                   {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
                 </button>
@@ -2489,7 +2489,7 @@ export default function Ecommerce() {
             )}
 
             <div className="relative">
-              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
+              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 ☰
               </button>
               {menuOpen && (
