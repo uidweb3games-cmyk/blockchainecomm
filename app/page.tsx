@@ -330,10 +330,12 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 
 function TrolleyIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
-      <path d="M3 3h2l.4 2M7 13h10l3.6-8H5.4M7 13L5.4 5M7 13l-2 5h13" />
-      <circle cx="9" cy="20" r="1.5" fill="currentColor" stroke="none" />
-      <circle cx="17" cy="20" r="1.5" fill="currentColor" stroke="none" />
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+      <path d="M2 3h2l.6 3M5.6 6h16l-1.8 9H8.2L5.6 6Z" strokeWidth="1.8" />
+      <path d="M7 9h14.4M8.1 12h12.2" strokeWidth="1" />
+      <path d="M10.5 6v9M14 6v9M17.5 6v9" strokeWidth="1" />
+      <circle cx="9.5" cy="19.3" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="19.3" r="1.4" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -343,7 +345,6 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
   // same gradient ID - two SVGs sharing one id is invalid and can render
   // unpredictably across browsers.
   const gradId = `osSymGrad-${useId()}`;
-  const gradIdReverse = `osSymGradRev-${useId()}`;
   return (
     <svg viewBox="0 0 210 210" width="210" height="210" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -351,26 +352,20 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
           <stop offset="0%" stopColor="#a3e635" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
-        {/* Reversed version of the same two brand colors, used only on the
-            trolley - so it reads as a distinct piece instead of blending
-            into the ring, while staying strictly on-brand. */}
-        <linearGradient id={gradIdReverse} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#38bdf8" />
-          <stop offset="100%" stopColor="#a3e635" />
-        </linearGradient>
       </defs>
       {/* Ring - a full circle with a dashed gap cut into it, centered on the
           right side. Using a dash pattern instead of a hand-computed arc
           path avoids the large-arc/sweep-flag math that's easy to get
           subtly wrong and hard to visually debug. */}
       <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="435.63 67.02" strokeDashoffset="469.14" />
-      {/* Shopping trolley icon, centered inside the ring - wider cage body
-          and bigger, more spaced-out wheels read more clearly as a wheeled
-          trolley rather than a hand-held basket. Uses the reversed gradient
-          so it visually stands apart from the ring. */}
-      <path d="M 58 76 L 72 76 L 79 102 L 133 102 L 124 124 L 89 124 Z" fill="none" stroke={`url(#${gradIdReverse})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="95" cy="134" r="6.5" fill={`url(#${gradIdReverse})`} />
-      <circle cx="118" cy="134" r="6.5" fill={`url(#${gradIdReverse})`} />
+      {/* Shopping trolley, centered inside the ring - net/mesh basket
+          (matching the same style used on the app icon and the cart badges
+          elsewhere on the site), same gradient as the ring so it reads as
+          one connected piece rather than a separate color. */}
+      <path d="M 58 76 L 72 76 L 79 102 L 133 102 L 124 124 L 89 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M 82.2 109 L 130.1 109 M 85.8 117 L 126.9 117 M 95 102 L 95 124 M 106 102 L 106 124 M 117 102 L 117 124" stroke={`url(#${gradId})`} strokeWidth="2" strokeLinecap="round" />
+      <circle cx="95" cy="134" r="6.5" fill={`url(#${gradId})`} />
+      <circle cx="118" cy="134" r="6.5" fill={`url(#${gradId})`} />
       {/* Motion swoosh beneath the cart, sweeping out past the ring's gap */}
       <path d="M 55 150 Q 100 118 195 100" fill="none" stroke={`url(#${gradId})`} strokeWidth="4" strokeLinecap="round" />
     </svg>
@@ -449,7 +444,6 @@ export default function Ecommerce() {
   const [maxPrice, setMaxPrice] = useState('');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [justAddedIds, setJustAddedIds] = useState<Set<number>>(new Set());
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
   const [shippingModal, setShippingModal] = useState(false);
   const [shippingForm, setShippingForm] = useState<ShippingInfo>(emptyShipping);
@@ -2262,28 +2256,6 @@ export default function Ecommerce() {
               {listing.colors.length}c / {listing.sizes.length}s
             </span>
           )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              // Variant items need a color/size picked first, so the badge
-              // opens Quick View for those - same as tapping the image
-              // itself. Simple items add straight to cart with a brief
-              // checkmark confirmation instead of navigating anywhere.
-              if (listing.hasVariants) { setQuickViewId(listing.id); return; }
-              if (listing.simpleStock <= BigInt(0)) return;
-              addToCart(listing, '', '');
-              setJustAddedIds((prev) => new Set(prev).add(listing.id));
-              setTimeout(() => setJustAddedIds((prev) => { const next = new Set(prev); next.delete(listing.id); return next; }), 1200);
-            }}
-            aria-label={listing.hasVariants ? 'Choose options' : 'Add to cart'}
-            className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-transform"
-          >
-            {justAddedIds.has(listing.id) ? (
-              <span className="text-zinc-900 text-sm font-bold">✓</span>
-            ) : (
-              <TrolleyIcon className="w-4 h-4 text-zinc-900" />
-            )}
-          </button>
         </div>
         <div className="px-2.5 py-2">
           <p className="text-sm font-medium truncate">{listing.name}</p>
@@ -3449,6 +3421,20 @@ export default function Ecommerce() {
                 onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
               />
               <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
+              {!isOwnQuickViewListing && (
+                <button
+                  disabled={!canAddQuickViewToCart}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                    setQuickViewId(null);
+                  }}
+                  aria-label="Add to cart"
+                  className="absolute bottom-3 right-3 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform disabled:opacity-40"
+                >
+                  <TrolleyIcon className="w-7 h-7 text-white" />
+                </button>
+              )}
             </div>
             <div className="p-6">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -3551,15 +3537,9 @@ export default function Ecommerce() {
                     Edit This Listing
                   </button>
                 </div>
-              ) : (
-                <button
-                  disabled={!canAddQuickViewToCart}
-                  onClick={() => { addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : ''); setQuickViewId(null); }}
-                  className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-40"
-                >
-                  {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (!qvColorReady ? 'Select a color' : 'Select a size') : 'Add to Cart'}
-                </button>
-              )}
+              ) : quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (
+                <p className={`text-xs ${subtleText} text-center`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
+              ) : null}
             </div>
           </div>
         </div>
