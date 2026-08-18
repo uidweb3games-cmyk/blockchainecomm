@@ -2451,7 +2451,7 @@ export default function Ecommerce() {
             </div>
 
             <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-md shadow-sky-400/30">
-              <TrolleyIcon className="w-5 h-5 text-white" />
+              <TrolleyIcon className="w-5 h-5" />
               {cart.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>)}
             </button>
 
@@ -3432,7 +3432,7 @@ export default function Ecommerce() {
                   aria-label="Add to cart"
                   className="absolute bottom-3 right-3 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform disabled:opacity-40"
                 >
-                  <TrolleyIcon className="w-7 h-7 text-white" />
+                  <TrolleyIcon className="w-7 h-7" />
                 </button>
               )}
             </div>
