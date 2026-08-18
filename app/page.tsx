@@ -346,10 +346,12 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
           path avoids the large-arc/sweep-flag math that's easy to get
           subtly wrong and hard to visually debug. */}
       <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="435.63 67.02" strokeDashoffset="469.14" />
-      {/* Shopping cart icon, centered inside the ring */}
-      <path d="M 63 78 L 74 78 L 80 104 L 126 104 L 119 124 L 88 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="94" cy="134" r="5.5" fill={`url(#${gradId})`} />
-      <circle cx="113" cy="134" r="5.5" fill={`url(#${gradId})`} />
+      {/* Shopping trolley icon, centered inside the ring - wider cage body
+          and bigger, more spaced-out wheels read more clearly as a wheeled
+          trolley rather than a hand-held basket */}
+      <path d="M 58 76 L 72 76 L 79 102 L 133 102 L 124 124 L 89 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="95" cy="134" r="6.5" fill={`url(#${gradId})`} />
+      <circle cx="118" cy="134" r="6.5" fill={`url(#${gradId})`} />
       {/* Motion swoosh beneath the cart, sweeping out past the ring's gap */}
       <path d="M 55 150 Q 100 118 195 100" fill="none" stroke={`url(#${gradId})`} strokeWidth="4" strokeLinecap="round" />
     </svg>
@@ -486,7 +488,7 @@ export default function Ecommerce() {
   const [siteAnalyticsLoading, setSiteAnalyticsLoading] = useState(false);
   const [caseStatusMap, setCaseStatusMap] = useState<Record<number, { claimedBy: string | null; note: string }>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
-  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[]; listingNames: string[] } | null>(null);
+  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[]; listingNames: string[]; listingIds: number[] } | null>(null);
   // Tracks a single in-flight blockchain action so its notification can fire
   // only once that specific transaction confirms - reused for shipping
   // status updates, cancellations, and disputes, which all share the same
@@ -494,7 +496,6 @@ export default function Ecommerce() {
   const [pendingActionNotify, setPendingActionNotify] = useState<{ toAddress: string; title: string; body: string; orderId: number } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
   const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
-  const lowStockAlertedRef = useRef<Set<number>>(new Set());
   const [notifBellOpen, setNotifBellOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -873,28 +874,6 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
-  const LOW_STOCK_THRESHOLD = 3;
-  // Watches the seller's own simple (non-variant) listings for low stock and
-  // notifies once per dip below the threshold - clears itself once stock is
-  // restocked above the threshold, so a future dip notifies again. Scoped to
-  // simple-stock items only for now; variant (color/size) stock would need
-  // per-combo reads for every one of a seller's listings, which isn't loaded
-  // in bulk on this screen today.
-  useEffect(() => {
-    if (!address) return;
-    const mine = allListings.filter((l) => !l.hasVariants && !l.delisted && l.seller.toLowerCase() === address.toLowerCase());
-    mine.forEach((l) => {
-      const stock = Number(l.simpleStock);
-      const alreadyAlerted = lowStockAlertedRef.current.has(l.id);
-      if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alreadyAlerted) {
-        lowStockAlertedRef.current.add(l.id);
-        sendNotification(address, '📦 Low stock', `"${l.name}" is down to ${stock} left in stock.`);
-      } else if (stock > LOW_STOCK_THRESHOLD && alreadyAlerted) {
-        lowStockAlertedRef.current.delete(l.id);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, allListings.map((l) => `${l.id}:${l.simpleStock}`).join(',')]);
 
   // For the "Verified Seller" badge - checks which sellers currently shown
   // in the shop have completed their shop profile setup. Public lookup, no
@@ -1071,7 +1050,7 @@ export default function Ecommerce() {
     (async () => {
       const result = await refetchOrderCount();
       const newCount = result.data ? Number(result.data) : oCount;
-      const { startOrderCount, numItems, info, sellerAddresses, listingNames } = pendingShippingSave;
+      const { startOrderCount, numItems, info, sellerAddresses, listingNames, listingIds } = pendingShippingSave;
       const newOrderIds = Array.from({ length: numItems }, (_, i) => startOrderCount + i + 1).filter((id) => id <= newCount);
       const sellerMap: Record<number, string> = {};
       newOrderIds.forEach((id, i) => { if (sellerAddresses[i]) sellerMap[id] = sellerAddresses[i]; });
@@ -1081,6 +1060,22 @@ export default function Ecommerce() {
       // own item(s), not a single combined alert.
       newOrderIds.forEach((id, i) => {
         if (sellerAddresses[i]) notifySeller(sellerAddresses[i], id, listingNames[i] || 'an item');
+      });
+      // Low-stock check happens right here, once, tied to this specific
+      // purchase - not as a background watcher. This is deliberate: a
+      // watcher that polls stock levels can flag the same dip more than
+      // once if a read is briefly stale. Checking exactly once, exactly
+      // when a real sale happens, means one notification per sale that
+      // actually pushes an item low, and nothing in between.
+      const freshStock = await refetchStock();
+      listingIds.forEach((listingId, i) => {
+        const listing = getListingById(listingId);
+        if (!listing || listing.hasVariants) return; // variant stock isn't tracked here yet
+        const stockResult = freshStock.data?.[listingId - 1];
+        const newStock = stockResult && stockResult.status === 'success' && stockResult.result !== undefined ? Number(stockResult.result) : null;
+        if (newStock !== null && newStock > 0 && newStock <= 3 && sellerAddresses[i]) {
+          sendNotification(sellerAddresses[i], '📦 Low stock', `"${listingNames[i] || listing.name}" is down to ${newStock} left in stock.`);
+        }
       });
       setPendingShippingSave(null);
       setAwaitingPurchaseTx(false);
@@ -2115,7 +2110,8 @@ export default function Ecommerce() {
     if (cart.length === 0 || !cartCurrency) return;
     const sellerAddresses = cart.map((line) => getListingById(line.listingId)?.seller || '');
     const listingNames = cart.map((line) => getListingById(line.listingId)?.name || 'an item');
-    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length, sellerAddresses, listingNames });
+    const listingIds = cart.map((line) => line.listingId);
+    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length, sellerAddresses, listingNames, listingIds });
     proceedToCheckout(cart, cartCurrency);
     setCart([]);
     setCartCurrency(null);
@@ -2447,7 +2443,7 @@ export default function Ecommerce() {
 
             {isConnected && (
               <div className="relative">
-                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-amber-400/30">
+                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
                   🔔
                   {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
                 </button>
