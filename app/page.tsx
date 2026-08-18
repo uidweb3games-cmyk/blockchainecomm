@@ -44,8 +44,213 @@ const VIEW_CURRENCIES: Record<string, { label: string; address: string | null; s
   USDT: { label: 'USDT', address: USDT_ADDRESS, symbol: 'USDT' },
 };
 
-type ShippingInfo = { fullName: string; address: string; city: string; country: string; phone: string };
-const emptyShipping: ShippingInfo = { fullName: '', address: '', city: '', country: '', phone: '' };
+type ShippingInfo = { fullName: string; address: string; city: string; state: string; country: string; phone: string };
+const emptyShipping: ShippingInfo = { fullName: '', address: '', city: '', state: '', country: '', phone: '' };
+
+// Countries eligible to ship to. Once compliance is secured for specific
+// regions, remove the ineligible entries from this list - the dropdown
+// (and the country-code phone list, which reuses it) updates automatically,
+// no other code changes needed.
+const COUNTRIES: { name: string; code: string; dial: string }[] = [
+  { name: "Afghanistan", code: "AF", dial: "+93" },
+  { name: "Albania", code: "AL", dial: "+355" },
+  { name: "Algeria", code: "DZ", dial: "+213" },
+  { name: "Andorra", code: "AD", dial: "+376" },
+  { name: "Angola", code: "AO", dial: "+244" },
+  { name: "Antigua and Barbuda", code: "AG", dial: "+1268" },
+  { name: "Argentina", code: "AR", dial: "+54" },
+  { name: "Armenia", code: "AM", dial: "+374" },
+  { name: "Australia", code: "AU", dial: "+61" },
+  { name: "Austria", code: "AT", dial: "+43" },
+  { name: "Azerbaijan", code: "AZ", dial: "+994" },
+  { name: "Bahamas", code: "BS", dial: "+1242" },
+  { name: "Bahrain", code: "BH", dial: "+973" },
+  { name: "Bangladesh", code: "BD", dial: "+880" },
+  { name: "Barbados", code: "BB", dial: "+1246" },
+  { name: "Belarus", code: "BY", dial: "+375" },
+  { name: "Belgium", code: "BE", dial: "+32" },
+  { name: "Belize", code: "BZ", dial: "+501" },
+  { name: "Benin", code: "BJ", dial: "+229" },
+  { name: "Bhutan", code: "BT", dial: "+975" },
+  { name: "Bolivia", code: "BO", dial: "+591" },
+  { name: "Bosnia and Herzegovina", code: "BA", dial: "+387" },
+  { name: "Botswana", code: "BW", dial: "+267" },
+  { name: "Brazil", code: "BR", dial: "+55" },
+  { name: "Brunei", code: "BN", dial: "+673" },
+  { name: "Bulgaria", code: "BG", dial: "+359" },
+  { name: "Burkina Faso", code: "BF", dial: "+226" },
+  { name: "Burundi", code: "BI", dial: "+257" },
+  { name: "Cabo Verde", code: "CV", dial: "+238" },
+  { name: "Cambodia", code: "KH", dial: "+855" },
+  { name: "Cameroon", code: "CM", dial: "+237" },
+  { name: "Canada", code: "CA", dial: "+1" },
+  { name: "Central African Republic", code: "CF", dial: "+236" },
+  { name: "Chad", code: "TD", dial: "+235" },
+  { name: "Chile", code: "CL", dial: "+56" },
+  { name: "China", code: "CN", dial: "+86" },
+  { name: "Colombia", code: "CO", dial: "+57" },
+  { name: "Comoros", code: "KM", dial: "+269" },
+  { name: "Congo (DRC)", code: "CD", dial: "+243" },
+  { name: "Congo (Republic)", code: "CG", dial: "+242" },
+  { name: "Costa Rica", code: "CR", dial: "+506" },
+  { name: "Croatia", code: "HR", dial: "+385" },
+  { name: "Cuba", code: "CU", dial: "+53" },
+  { name: "Cyprus", code: "CY", dial: "+357" },
+  { name: "Czechia", code: "CZ", dial: "+420" },
+  { name: "Denmark", code: "DK", dial: "+45" },
+  { name: "Djibouti", code: "DJ", dial: "+253" },
+  { name: "Dominica", code: "DM", dial: "+1767" },
+  { name: "Dominican Republic", code: "DO", dial: "+1809" },
+  { name: "Ecuador", code: "EC", dial: "+593" },
+  { name: "Egypt", code: "EG", dial: "+20" },
+  { name: "El Salvador", code: "SV", dial: "+503" },
+  { name: "Equatorial Guinea", code: "GQ", dial: "+240" },
+  { name: "Eritrea", code: "ER", dial: "+291" },
+  { name: "Estonia", code: "EE", dial: "+372" },
+  { name: "Eswatini", code: "SZ", dial: "+268" },
+  { name: "Ethiopia", code: "ET", dial: "+251" },
+  { name: "Fiji", code: "FJ", dial: "+679" },
+  { name: "Finland", code: "FI", dial: "+358" },
+  { name: "France", code: "FR", dial: "+33" },
+  { name: "Gabon", code: "GA", dial: "+241" },
+  { name: "Gambia", code: "GM", dial: "+220" },
+  { name: "Georgia", code: "GE", dial: "+995" },
+  { name: "Germany", code: "DE", dial: "+49" },
+  { name: "Ghana", code: "GH", dial: "+233" },
+  { name: "Greece", code: "GR", dial: "+30" },
+  { name: "Grenada", code: "GD", dial: "+1473" },
+  { name: "Guatemala", code: "GT", dial: "+502" },
+  { name: "Guinea", code: "GN", dial: "+224" },
+  { name: "Guinea-Bissau", code: "GW", dial: "+245" },
+  { name: "Guyana", code: "GY", dial: "+592" },
+  { name: "Haiti", code: "HT", dial: "+509" },
+  { name: "Honduras", code: "HN", dial: "+504" },
+  { name: "Hungary", code: "HU", dial: "+36" },
+  { name: "Iceland", code: "IS", dial: "+354" },
+  { name: "India", code: "IN", dial: "+91" },
+  { name: "Indonesia", code: "ID", dial: "+62" },
+  { name: "Iran", code: "IR", dial: "+98" },
+  { name: "Iraq", code: "IQ", dial: "+964" },
+  { name: "Ireland", code: "IE", dial: "+353" },
+  { name: "Israel", code: "IL", dial: "+972" },
+  { name: "Italy", code: "IT", dial: "+39" },
+  { name: "Ivory Coast", code: "CI", dial: "+225" },
+  { name: "Jamaica", code: "JM", dial: "+1876" },
+  { name: "Japan", code: "JP", dial: "+81" },
+  { name: "Jordan", code: "JO", dial: "+962" },
+  { name: "Kazakhstan", code: "KZ", dial: "+7" },
+  { name: "Kenya", code: "KE", dial: "+254" },
+  { name: "Kiribati", code: "KI", dial: "+686" },
+  { name: "Kosovo", code: "XK", dial: "+383" },
+  { name: "Kuwait", code: "KW", dial: "+965" },
+  { name: "Kyrgyzstan", code: "KG", dial: "+996" },
+  { name: "Laos", code: "LA", dial: "+856" },
+  { name: "Latvia", code: "LV", dial: "+371" },
+  { name: "Lebanon", code: "LB", dial: "+961" },
+  { name: "Lesotho", code: "LS", dial: "+266" },
+  { name: "Liberia", code: "LR", dial: "+231" },
+  { name: "Libya", code: "LY", dial: "+218" },
+  { name: "Liechtenstein", code: "LI", dial: "+423" },
+  { name: "Lithuania", code: "LT", dial: "+370" },
+  { name: "Luxembourg", code: "LU", dial: "+352" },
+  { name: "Madagascar", code: "MG", dial: "+261" },
+  { name: "Malawi", code: "MW", dial: "+265" },
+  { name: "Malaysia", code: "MY", dial: "+60" },
+  { name: "Maldives", code: "MV", dial: "+960" },
+  { name: "Mali", code: "ML", dial: "+223" },
+  { name: "Malta", code: "MT", dial: "+356" },
+  { name: "Marshall Islands", code: "MH", dial: "+692" },
+  { name: "Mauritania", code: "MR", dial: "+222" },
+  { name: "Mauritius", code: "MU", dial: "+230" },
+  { name: "Mexico", code: "MX", dial: "+52" },
+  { name: "Micronesia", code: "FM", dial: "+691" },
+  { name: "Moldova", code: "MD", dial: "+373" },
+  { name: "Monaco", code: "MC", dial: "+377" },
+  { name: "Mongolia", code: "MN", dial: "+976" },
+  { name: "Montenegro", code: "ME", dial: "+382" },
+  { name: "Morocco", code: "MA", dial: "+212" },
+  { name: "Mozambique", code: "MZ", dial: "+258" },
+  { name: "Myanmar", code: "MM", dial: "+95" },
+  { name: "Namibia", code: "NA", dial: "+264" },
+  { name: "Nauru", code: "NR", dial: "+674" },
+  { name: "Nepal", code: "NP", dial: "+977" },
+  { name: "Netherlands", code: "NL", dial: "+31" },
+  { name: "New Zealand", code: "NZ", dial: "+64" },
+  { name: "Nicaragua", code: "NI", dial: "+505" },
+  { name: "Niger", code: "NE", dial: "+227" },
+  { name: "Nigeria", code: "NG", dial: "+234" },
+  { name: "North Korea", code: "KP", dial: "+850" },
+  { name: "North Macedonia", code: "MK", dial: "+389" },
+  { name: "Norway", code: "NO", dial: "+47" },
+  { name: "Oman", code: "OM", dial: "+968" },
+  { name: "Pakistan", code: "PK", dial: "+92" },
+  { name: "Palau", code: "PW", dial: "+680" },
+  { name: "Palestine", code: "PS", dial: "+970" },
+  { name: "Panama", code: "PA", dial: "+507" },
+  { name: "Papua New Guinea", code: "PG", dial: "+675" },
+  { name: "Paraguay", code: "PY", dial: "+595" },
+  { name: "Peru", code: "PE", dial: "+51" },
+  { name: "Philippines", code: "PH", dial: "+63" },
+  { name: "Poland", code: "PL", dial: "+48" },
+  { name: "Portugal", code: "PT", dial: "+351" },
+  { name: "Qatar", code: "QA", dial: "+974" },
+  { name: "Romania", code: "RO", dial: "+40" },
+  { name: "Russia", code: "RU", dial: "+7" },
+  { name: "Rwanda", code: "RW", dial: "+250" },
+  { name: "Saint Kitts and Nevis", code: "KN", dial: "+1869" },
+  { name: "Saint Lucia", code: "LC", dial: "+1758" },
+  { name: "Saint Vincent and the Grenadines", code: "VC", dial: "+1784" },
+  { name: "Samoa", code: "WS", dial: "+685" },
+  { name: "San Marino", code: "SM", dial: "+378" },
+  { name: "Sao Tome and Principe", code: "ST", dial: "+239" },
+  { name: "Saudi Arabia", code: "SA", dial: "+966" },
+  { name: "Senegal", code: "SN", dial: "+221" },
+  { name: "Serbia", code: "RS", dial: "+381" },
+  { name: "Seychelles", code: "SC", dial: "+248" },
+  { name: "Sierra Leone", code: "SL", dial: "+232" },
+  { name: "Singapore", code: "SG", dial: "+65" },
+  { name: "Slovakia", code: "SK", dial: "+421" },
+  { name: "Slovenia", code: "SI", dial: "+386" },
+  { name: "Solomon Islands", code: "SB", dial: "+677" },
+  { name: "Somalia", code: "SO", dial: "+252" },
+  { name: "South Africa", code: "ZA", dial: "+27" },
+  { name: "South Korea", code: "KR", dial: "+82" },
+  { name: "South Sudan", code: "SS", dial: "+211" },
+  { name: "Spain", code: "ES", dial: "+34" },
+  { name: "Sri Lanka", code: "LK", dial: "+94" },
+  { name: "Sudan", code: "SD", dial: "+249" },
+  { name: "Suriname", code: "SR", dial: "+597" },
+  { name: "Sweden", code: "SE", dial: "+46" },
+  { name: "Switzerland", code: "CH", dial: "+41" },
+  { name: "Syria", code: "SY", dial: "+963" },
+  { name: "Taiwan", code: "TW", dial: "+886" },
+  { name: "Tajikistan", code: "TJ", dial: "+992" },
+  { name: "Tanzania", code: "TZ", dial: "+255" },
+  { name: "Thailand", code: "TH", dial: "+66" },
+  { name: "Timor-Leste", code: "TL", dial: "+670" },
+  { name: "Togo", code: "TG", dial: "+228" },
+  { name: "Tonga", code: "TO", dial: "+676" },
+  { name: "Trinidad and Tobago", code: "TT", dial: "+1868" },
+  { name: "Tunisia", code: "TN", dial: "+216" },
+  { name: "Turkey", code: "TR", dial: "+90" },
+  { name: "Turkmenistan", code: "TM", dial: "+993" },
+  { name: "Tuvalu", code: "TV", dial: "+688" },
+  { name: "Uganda", code: "UG", dial: "+256" },
+  { name: "Ukraine", code: "UA", dial: "+380" },
+  { name: "United Arab Emirates", code: "AE", dial: "+971" },
+  { name: "United Kingdom", code: "GB", dial: "+44" },
+  { name: "United States", code: "US", dial: "+1" },
+  { name: "Uruguay", code: "UY", dial: "+598" },
+  { name: "Uzbekistan", code: "UZ", dial: "+998" },
+  { name: "Vanuatu", code: "VU", dial: "+678" },
+  { name: "Vatican City", code: "VA", dial: "+379" },
+  { name: "Venezuela", code: "VE", dial: "+58" },
+  { name: "Vietnam", code: "VN", dial: "+84" },
+  { name: "Yemen", code: "YE", dial: "+967" },
+  { name: "Zambia", code: "ZM", dial: "+260" },
+  { name: "Zimbabwe", code: "ZW", dial: "+263" },
+];
+
 
 type ChatMessage = { id: number; fromAddress: string; toAddress: string; text: string; createdAt: string };
 type EvidenceItem = { id: number; submittedBy: string; imageUrl: string | null; note: string | null; createdAt: string };
@@ -205,6 +410,8 @@ export default function Ecommerce() {
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
   const [shippingModal, setShippingModal] = useState(false);
   const [shippingForm, setShippingForm] = useState<ShippingInfo>(emptyShipping);
+  const [shippingDialCode, setShippingDialCode] = useState('+1');
+  const [shippingPhoneLocal, setShippingPhoneLocal] = useState('');
   const [pendingTokenBuy, setPendingTokenBuy] = useState<{ lines: CartLine[]; token: string; totalDue: bigint } | null>(null);
   const [disputeCenterOpen, setDisputeCenterOpen] = useState(false);
   const [resolveCenterOpen, setResolveCenterOpen] = useState(false);
@@ -263,7 +470,6 @@ export default function Ecommerce() {
   const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
   const [notifBellOpen, setNotifBellOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushPromptDismissed, setPushPromptDismissed] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
   const loginIdentity = privyUser?.google?.email || privyUser?.email?.address || (privyUser?.twitter?.username ? `@${privyUser.twitter.username}` : null);
@@ -1263,6 +1469,20 @@ export default function Ecommerce() {
     }
   };
 
+  // Silently detects moderator status - deliberately no visible button, so
+  // the concept of "moderator access" isn't exposed to every visitor. Only
+  // runs the check if this wallet already has a saved chat signature (from
+  // using chat before), so it NEVER pops up a surprise "sign this" request
+  // just to check something the vast majority of wallets aren't. A real
+  // moderator who hasn't chatted yet can open any chat once to "activate"
+  // this automatically going forward.
+  useEffect(() => {
+    if (!address || isAdmin) return;
+    const cacheKey = `openspace_chat_session_${address.toLowerCase()}`;
+    if (localStorage.getItem(cacheKey)) checkIfModerator();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
+
   // ---------- NOTIFICATIONS (bell + browser push) ----------
   const loadNotifications = async () => {
     if (!address) return;
@@ -1333,12 +1553,27 @@ export default function Ecommerce() {
     }
   };
 
-  // Restores whether this wallet already turned push on, so the "Enable
-  // Notifications" prompt doesn't nag someone who already said yes.
+  const disablePushNotifications = async () => {
+    if (!address) return;
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) await subscription.unsubscribe();
+      await supabase.functions.invoke('notifications', {
+        body: { action: 'unsubscribe', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+      });
+    } catch (e) {
+      console.error('Failed to disable push notifications:', e);
+    }
+    setPushEnabled(false);
+    localStorage.removeItem(`openspace_push_enabled_${address.toLowerCase()}`);
+  };
+
+  // Restores whether this wallet already turned push on, so Wallet Settings
+  // shows the right state without a round trip.
   useEffect(() => {
     if (!address) return;
     setPushEnabled(localStorage.getItem(`openspace_push_enabled_${address.toLowerCase()}`) === 'true');
-    setPushPromptDismissed(sessionStorage.getItem(`openspace_push_dismissed_${address.toLowerCase()}`) === 'true');
   }, [address]);
 
   // Polls for new notifications while connected - same lightweight pattern
@@ -2013,7 +2248,7 @@ export default function Ecommerce() {
             <div className={`mb-4 p-3 rounded-xl text-xs ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder}`}>
               <p className={`${subtleText} uppercase tracking-wide text-[10px] mb-1 font-semibold`}>Ship to</p>
               <p className="font-medium">{shipInfo.fullName}</p>
-              <p className={subtleText}>{shipInfo.address}, {shipInfo.city}, {shipInfo.country}</p>
+              <p className={subtleText}>{shipInfo.address}, {shipInfo.city}{shipInfo.state ? `, ${shipInfo.state}` : ''}, {shipInfo.country}</p>
               {shipInfo.phone && <p className={subtleText}>{shipInfo.phone}</p>}
             </div>
           ) : context === 'seller' && (
@@ -2160,7 +2395,6 @@ export default function Ecommerce() {
                         <button onClick={() => { setHelpModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>❓ How to Test</button>
                         {isConnected && disputeEligible.length > 0 && (<button onClick={() => { setDisputeCenterOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-red-500 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚠ Open Dispute</button>)}
                         {(isAdmin || isModeratorState) && (disputedOrders.length > 0 || resolvedDisputedOrders.length > 0) && (<button onClick={() => { setResolveCenterOpen(true); setMenuOpen(false); setDisputeQueueTab('open'); [...disputedOrders, ...resolvedDisputedOrders].forEach((o) => loadEvidence(o.id)); loadCaseStatus([...disputedOrders, ...resolvedDisputedOrders].map((o) => o.id)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-amber-600 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Dispute Queue ({disputedOrders.length})</button>)}
-                        {!isAdmin && !isModeratorState && isConnected && (<button onClick={async () => { const result = await checkIfModerator(); if (!result) alert('This wallet is not registered as a support/moderator wallet.'); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium ${subtleText} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🔧 Check Support Access</button>)}
                         {isAdmin && (<button onClick={() => { openAdminSettings(); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Admin Settings</button>)}
                       </div>
                       <div className={`border-t ${cardBorder} mt-2 pt-2`}>
@@ -2359,7 +2593,7 @@ export default function Ecommerce() {
                     {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : sellSubTab === 'history' ? '📜 Sold History' : '📢 Sponsored Ads'}
                     <span className="text-xs">▾</span>
                     {myOrdersToFulfill.length > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                      <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-[0_0_6px_rgba(239,68,68,0.8)]">{myOrdersToFulfill.length}</span>
                     )}
                   </button>
                   {sellPageMenuOpen && (
@@ -2368,9 +2602,9 @@ export default function Ecommerce() {
                       <div className={`absolute right-0 mt-2 w-56 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
                         <button onClick={() => { setSellSubTab('list'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'list' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📝 List an Item</button>
                         <button onClick={() => { setSellSubTab('fulfill'); setSellPageMenuOpen(false); }} className={`relative w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'fulfill' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
-                          📦 Orders to Fulfill {myOrdersToFulfill.length > 0 ? `(${myOrdersToFulfill.length})` : ''}
+                          📦 Orders to Fulfill
                           {myOrdersToFulfill.length > 0 && (
-                            <span className="absolute top-2 right-3 w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                            <span className="absolute top-2.5 right-3 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center shadow-[0_0_6px_rgba(239,68,68,0.8)]">{myOrdersToFulfill.length}</span>
                           )}
                         </button>
                         <button onClick={() => { setSellSubTab('history'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'history' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📜 Sold History {mySoldHistory.length > 0 ? `(${mySoldHistory.length})` : ''}</button>
@@ -2617,15 +2851,6 @@ export default function Ecommerce() {
 
                 {sellSubTab === 'fulfill' && (
                   <div>
-                    {!pushEnabled && !pushPromptDismissed && (
-                      <div className={`mb-4 p-3 rounded-xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} flex items-center justify-between gap-3 flex-wrap`}>
-                        <p className={`text-xs ${subtleText}`}>🔔 Get notified the moment someone buys from you, even with the tab closed.</p>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={enablePushNotifications} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg">Enable Notifications</button>
-                          <button onClick={() => { setPushPromptDismissed(true); if (address) sessionStorage.setItem(`openspace_push_dismissed_${address.toLowerCase()}`, 'true'); }} className={`text-xs ${subtleText}`}>Not now</button>
-                        </div>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                       <h3 className="font-semibold text-lg">Orders to Fulfill</h3>
                       {myOrdersToFulfill.length > 0 && !sellerShipAuth && (
@@ -3022,6 +3247,15 @@ export default function Ecommerce() {
                 <p className={`text-[11px] ${subtleText} mt-1`}>Need funds? Get free test tBNB (and USDC/USDT) at testnet.bnbchain.org/faucet-smart</p>
               </div>
               <div className={`border-t ${cardBorder} pt-4`}>
+                <p className="text-sm font-medium mb-1">🔔 Order Notifications</p>
+                <p className={`text-xs ${subtleText} mb-2`}>{pushEnabled ? 'Push notifications are on - you\'ll be alerted the moment someone buys from you, even with the tab closed.' : 'Get notified the moment someone buys from you, even with the tab closed.'}</p>
+                {pushEnabled ? (
+                  <button onClick={disablePushNotifications} className={`w-full py-2 text-sm font-medium border ${cardBorder} rounded-xl ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>Turn Off Notifications</button>
+                ) : (
+                  <button onClick={enablePushNotifications} className="w-full py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity">Enable Notifications</button>
+                )}
+              </div>
+              <div className={`border-t ${cardBorder} pt-4`}>
                 {hasEmbeddedWallet ? (
                   <>
                     <button onClick={() => exportWallet()} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity">🔐 Back Up Wallet</button>
@@ -3228,7 +3462,7 @@ export default function Ecommerce() {
                   {!isConnected ? (
                     <button onClick={() => { setCartOpen(false); openWalletChoice(); }} className={`w-full py-3 ${darkMode ? 'bg-white text-black hover:bg-zinc-200' : 'bg-zinc-900 text-white hover:bg-zinc-800'} rounded-2xl font-medium transition-colors`}>Connect to Checkout</button>
                   ) : (
-                    <button onClick={() => { setCartOpen(false); setShippingForm(emptyShipping); setShippingModal(true); }} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">Checkout</button>
+                    <button onClick={() => { setCartOpen(false); setShippingForm(emptyShipping); setShippingDialCode('+1'); setShippingPhoneLocal(''); setShippingModal(true); }} disabled={isPending} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">Checkout</button>
                   )}
                   <button onClick={() => { setCart([]); setCartCurrency(null); }} className={`w-full py-2.5 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>Clear Cart</button>
                 </div>
@@ -3243,14 +3477,47 @@ export default function Ecommerce() {
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Shipping Details</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Saved securely so your seller can view it to ship your order.</p>
-            <div className="space-y-3 mb-5">
+            <div className="space-y-3 mb-5 max-h-[60vh] overflow-y-auto pr-1">
               <input type="text" placeholder="Full Name" value={shippingForm.fullName} onChange={(e) => setShippingForm({ ...shippingForm, fullName: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               <input type="text" placeholder="Street Address" value={shippingForm.address} onChange={(e) => setShippingForm({ ...shippingForm, address: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               <div className="grid grid-cols-2 gap-3">
                 <input type="text" placeholder="City" value={shippingForm.city} onChange={(e) => setShippingForm({ ...shippingForm, city: e.target.value })} className={`${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
-                <input type="text" placeholder="Country" value={shippingForm.country} onChange={(e) => setShippingForm({ ...shippingForm, country: e.target.value })} className={`${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+                <input type="text" placeholder="State / Province" value={shippingForm.state} onChange={(e) => setShippingForm({ ...shippingForm, state: e.target.value })} className={`${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               </div>
-              <input type="text" placeholder="Phone (optional)" value={shippingForm.phone} onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Country</label>
+                <select
+                  value={shippingForm.country}
+                  onChange={(e) => setShippingForm({ ...shippingForm, country: e.target.value })}
+                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                >
+                  <option value="" style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>Select a country</option>
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.name} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Phone (optional)</label>
+                <div className="flex gap-2">
+                  <select
+                    value={shippingDialCode}
+                    onChange={(e) => { setShippingDialCode(e.target.value); setShippingForm({ ...shippingForm, phone: shippingPhoneLocal ? `${e.target.value} ${shippingPhoneLocal}` : '' }); }}
+                    className={`w-28 shrink-0 ${inputBg} border ${cardBorder} rounded-xl px-2 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`}
+                  >
+                    {COUNTRIES.map((c) => (
+                      <option key={c.code} value={c.dial} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c.dial} {c.code}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    placeholder="Phone number"
+                    value={shippingPhoneLocal}
+                    onChange={(e) => { setShippingPhoneLocal(e.target.value); setShippingForm({ ...shippingForm, phone: e.target.value ? `${shippingDialCode} ${e.target.value}` : '' }); }}
+                    className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                  />
+                </div>
+              </div>
             </div>
             {checkoutSummary && (
               <div className={`mb-5 p-4 rounded-2xl ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} border ${cardBorder} space-y-1.5`}>
