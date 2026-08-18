@@ -328,17 +328,35 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
   );
 }
 
+function TrolleyIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" xmlns="http://www.w3.org/2000/svg">
+      <path d="M3 3h2l.4 2M7 13h10l3.6-8H5.4M7 13L5.4 5M7 13l-2 5h13" />
+      <circle cx="9" cy="20" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="20" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function OpenSpaceSymbol({ className }: { className?: string }) {
   // Unique per render so the header and footer copies never collide on the
   // same gradient ID - two SVGs sharing one id is invalid and can render
   // unpredictably across browsers.
   const gradId = `osSymGrad-${useId()}`;
+  const gradIdReverse = `osSymGradRev-${useId()}`;
   return (
     <svg viewBox="0 0 210 210" width="210" height="210" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
           <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+        {/* Reversed version of the same two brand colors, used only on the
+            trolley - so it reads as a distinct piece instead of blending
+            into the ring, while staying strictly on-brand. */}
+        <linearGradient id={gradIdReverse} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#a3e635" />
         </linearGradient>
       </defs>
       {/* Ring - a full circle with a dashed gap cut into it, centered on the
@@ -348,10 +366,11 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
       <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="435.63 67.02" strokeDashoffset="469.14" />
       {/* Shopping trolley icon, centered inside the ring - wider cage body
           and bigger, more spaced-out wheels read more clearly as a wheeled
-          trolley rather than a hand-held basket */}
-      <path d="M 58 76 L 72 76 L 79 102 L 133 102 L 124 124 L 89 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="95" cy="134" r="6.5" fill={`url(#${gradId})`} />
-      <circle cx="118" cy="134" r="6.5" fill={`url(#${gradId})`} />
+          trolley rather than a hand-held basket. Uses the reversed gradient
+          so it visually stands apart from the ring. */}
+      <path d="M 58 76 L 72 76 L 79 102 L 133 102 L 124 124 L 89 124 Z" fill="none" stroke={`url(#${gradIdReverse})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="95" cy="134" r="6.5" fill={`url(#${gradIdReverse})`} />
+      <circle cx="118" cy="134" r="6.5" fill={`url(#${gradIdReverse})`} />
       {/* Motion swoosh beneath the cart, sweeping out past the ring's gap */}
       <path d="M 55 150 Q 100 118 195 100" fill="none" stroke={`url(#${gradId})`} strokeWidth="4" strokeLinecap="round" />
     </svg>
@@ -430,6 +449,7 @@ export default function Ecommerce() {
   const [maxPrice, setMaxPrice] = useState('');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [justAddedIds, setJustAddedIds] = useState<Set<number>>(new Set());
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
   const [shippingModal, setShippingModal] = useState(false);
   const [shippingForm, setShippingForm] = useState<ShippingInfo>(emptyShipping);
@@ -2242,6 +2262,28 @@ export default function Ecommerce() {
               {listing.colors.length}c / {listing.sizes.length}s
             </span>
           )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              // Variant items need a color/size picked first, so the badge
+              // opens Quick View for those - same as tapping the image
+              // itself. Simple items add straight to cart with a brief
+              // checkmark confirmation instead of navigating anywhere.
+              if (listing.hasVariants) { setQuickViewId(listing.id); return; }
+              if (listing.simpleStock <= BigInt(0)) return;
+              addToCart(listing, '', '');
+              setJustAddedIds((prev) => new Set(prev).add(listing.id));
+              setTimeout(() => setJustAddedIds((prev) => { const next = new Set(prev); next.delete(listing.id); return next; }), 1200);
+            }}
+            aria-label={listing.hasVariants ? 'Choose options' : 'Add to cart'}
+            className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-transform"
+          >
+            {justAddedIds.has(listing.id) ? (
+              <span className="text-zinc-900 text-sm font-bold">✓</span>
+            ) : (
+              <TrolleyIcon className="w-4 h-4 text-zinc-900" />
+            )}
+          </button>
         </div>
         <div className="px-2.5 py-2">
           <p className="text-sm font-medium truncate">{listing.name}</p>
@@ -2436,8 +2478,8 @@ export default function Ecommerce() {
               )}
             </div>
 
-            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-sky-400/30">
-              🛍️
+            <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-md shadow-sky-400/30">
+              <TrolleyIcon className="w-5 h-5 text-white" />
               {cart.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>)}
             </button>
 
