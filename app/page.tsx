@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useId } from 'react';
 import Link from 'next/link';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction, useSignMessage } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
@@ -329,22 +329,29 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
 }
 
 function OpenSpaceSymbol({ className }: { className?: string }) {
+  // Unique per render so the header and footer copies never collide on the
+  // same gradient ID - two SVGs sharing one id is invalid and can render
+  // unpredictably across browsers.
+  const gradId = `osSymGrad-${useId()}`;
   return (
-    <svg viewBox="0 0 210 220" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 210 210" width="210" height="210" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="osSymGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
       </defs>
-      {/* Ring - a thick "C" shape with the gap facing right, rounded ends */}
-      <path d="M 170.5 59.1 A 80 80 0 1 1 170.5 150.9" fill="none" stroke="url(#osSymGrad)" strokeWidth="34" strokeLinecap="round" />
+      {/* Ring - a full circle with a dashed gap cut into it, centered on the
+          right side. Using a dash pattern instead of a hand-computed arc
+          path avoids the large-arc/sweep-flag math that's easy to get
+          subtly wrong and hard to visually debug. */}
+      <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="404.92 97.74" strokeDashoffset="453.79" />
       {/* Shopping cart icon, centered inside the ring */}
-      <path d="M 63 78 L 74 78 L 80 104 L 126 104 L 119 124 L 88 124 Z" fill="none" stroke="url(#osSymGrad)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="94" cy="134" r="5.5" fill="url(#osSymGrad)" />
-      <circle cx="113" cy="134" r="5.5" fill="url(#osSymGrad)" />
+      <path d="M 63 78 L 74 78 L 80 104 L 126 104 L 119 124 L 88 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="94" cy="134" r="5.5" fill={`url(#${gradId})`} />
+      <circle cx="113" cy="134" r="5.5" fill={`url(#${gradId})`} />
       {/* Motion swoosh beneath the cart, sweeping out past the ring's gap */}
-      <path d="M 55 150 Q 100 118 195 100" fill="none" stroke="url(#osSymGrad)" strokeWidth="4" strokeLinecap="round" />
+      <path d="M 55 150 Q 100 118 195 100" fill="none" stroke={`url(#${gradId})`} strokeWidth="4" strokeLinecap="round" />
     </svg>
   );
 }
