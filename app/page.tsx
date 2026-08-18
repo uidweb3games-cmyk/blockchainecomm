@@ -2059,7 +2059,7 @@ export default function Ecommerce() {
       if (el.scrollLeft >= el.scrollWidth / 2) {
         el.scrollLeft -= el.scrollWidth / 2;
       } else {
-        el.scrollLeft += 0.35;
+        el.scrollLeft += 1.2;
       }
     }, 30);
     return () => clearInterval(interval);
@@ -2494,17 +2494,17 @@ export default function Ecommerce() {
               onMouseLeave={() => { adStripPausedRef.current = false; }}
               onTouchStart={() => { adStripPausedRef.current = true; }}
               onTouchEnd={() => { setTimeout(() => { adStripPausedRef.current = false; }, 1500); }}
-              className="flex gap-3 overflow-x-auto scroll-smooth px-4 sm:px-8"
+              className="flex gap-4 overflow-x-auto px-4 sm:px-8"
               style={{ scrollbarWidth: 'none' }}
             >
               {adStrip.map((listing, i) => {
                 const displayImage = listing.imageUrl && listing.imageUrl.trim() !== '' ? listing.imageUrl : FALLBACK_IMAGE;
                 return (
-                  <button key={`${listing.id}-${i}`} onClick={() => setQuickViewId(listing.id)} className={`flex items-center gap-3 ${cardBg} border ${cardBorder} rounded-2xl pr-4 py-1.5 shrink-0 hover:border-lime-400/60 transition-colors`}>
-                    <img src={displayImage} alt={listing.name} className="w-16 h-16 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                  <button key={`${listing.id}-${i}`} onClick={() => setQuickViewId(listing.id)} className={`flex items-center gap-4 ${cardBg} border ${cardBorder} rounded-2xl pr-5 py-2.5 shrink-0 hover:border-lime-400/60 transition-colors`}>
+                    <img src={displayImage} alt={listing.name} className="w-24 h-24 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
                     <div className="text-left">
-                      <p className="text-sm font-medium truncate max-w-[140px]">{listing.name}</p>
-                      <p className="text-xs font-mono text-lime-500">{(Number(listing.price) / 1e18).toString()} {currencySymbol(listing.paymentToken)}</p>
+                      <p className="text-base font-medium truncate max-w-[200px]">{listing.name}</p>
+                      <p className="text-sm font-mono text-lime-500">{(Number(listing.price) / 1e18).toString()} {currencySymbol(listing.paymentToken)}</p>
                     </div>
                   </button>
                 );
