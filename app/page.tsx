@@ -345,7 +345,7 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
           right side. Using a dash pattern instead of a hand-computed arc
           path avoids the large-arc/sweep-flag math that's easy to get
           subtly wrong and hard to visually debug. */}
-      <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="404.92 97.74" strokeDashoffset="453.79" />
+      <circle cx="105" cy="105" r="80" fill="none" stroke={`url(#${gradId})`} strokeWidth="34" strokeLinecap="round" strokeDasharray="435.63 67.02" strokeDashoffset="469.14" />
       {/* Shopping cart icon, centered inside the ring */}
       <path d="M 63 78 L 74 78 L 80 104 L 126 104 L 119 124 L 88 124 Z" fill="none" stroke={`url(#${gradId})`} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx="94" cy="134" r="5.5" fill={`url(#${gradId})`} />
@@ -358,7 +358,7 @@ function OpenSpaceSymbol({ className }: { className?: string }) {
 
 function OpenSpaceBrand({ imgClassName, textClassName }: { imgClassName?: string; textClassName?: string }) {
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-0.5 sm:gap-1">
       <OpenSpaceSymbol className={imgClassName} />
       <span className={`font-black tracking-tight bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent ${textClassName}`}>OpenSpace</span>
     </div>
