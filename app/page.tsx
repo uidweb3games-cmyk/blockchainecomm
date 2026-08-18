@@ -73,6 +73,21 @@ function currencySymbol(tokenAddress: string) {
 const CLOUDINARY_CLOUD_NAME = 'qczxrjw2';
 const CLOUDINARY_UPLOAD_PRESET = 'openspace_uploads';
 
+// Public half of the VAPID keypair used for browser push notifications -
+// safe to expose in client code by design (the private half stays on the
+// Supabase Edge Function only). Generated once, reused forever - do not
+// regenerate this unless every existing subscriber needs to re-subscribe.
+const VAPID_PUBLIC_KEY = 'BN3BH4j9x_wnHlqieaqAE8oCh2uw6BVS-BjvVNsqWWKd3Yv4SzKPJXOcZYy1NUukQpcj9FJgYchByaleBUAv3nc';
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
 async function uploadImageToCloudinary(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
@@ -243,8 +258,12 @@ export default function Ecommerce() {
   const [siteAnalyticsLoading, setSiteAnalyticsLoading] = useState(false);
   const [caseStatusMap, setCaseStatusMap] = useState<Record<number, { claimedBy: string | null; note: string }>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
-  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[] } | null>(null);
+  const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[]; listingNames: string[] } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
+  const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
+  const [notifBellOpen, setNotifBellOpen] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPromptDismissed, setPushPromptDismissed] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
   const loginIdentity = privyUser?.google?.email || privyUser?.email?.address || (privyUser?.twitter?.username ? `@${privyUser.twitter.username}` : null);
@@ -795,11 +814,17 @@ export default function Ecommerce() {
     (async () => {
       const result = await refetchOrderCount();
       const newCount = result.data ? Number(result.data) : oCount;
-      const { startOrderCount, numItems, info, sellerAddresses } = pendingShippingSave;
+      const { startOrderCount, numItems, info, sellerAddresses, listingNames } = pendingShippingSave;
       const newOrderIds = Array.from({ length: numItems }, (_, i) => startOrderCount + i + 1).filter((id) => id <= newCount);
       const sellerMap: Record<number, string> = {};
       newOrderIds.forEach((id, i) => { if (sellerAddresses[i]) sellerMap[id] = sellerAddresses[i]; });
       await saveShippingInfoForOrders(newOrderIds, info, sellerMap);
+      // Notify each seller involved - a multi-item cart can span several
+      // sellers at once, so each one gets their own notification for their
+      // own item(s), not a single combined alert.
+      newOrderIds.forEach((id, i) => {
+        if (sellerAddresses[i]) notifySeller(sellerAddresses[i], id, listingNames[i] || 'an item');
+      });
       setPendingShippingSave(null);
       setAwaitingPurchaseTx(false);
     })();
@@ -1237,6 +1262,94 @@ export default function Ecommerce() {
       return false;
     }
   };
+
+  // ---------- NOTIFICATIONS (bell + browser push) ----------
+  const loadNotifications = async () => {
+    if (!address) return;
+    const { data, error } = await supabase.functions.invoke('notifications', {
+      body: { action: 'list', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+    });
+    if (error) { console.error('Failed to load notifications:', error); return; }
+    const rows = (data?.data || []).map((r: any) => ({
+      id: r.id, orderId: r.order_id, title: r.title, body: r.body, seen: r.seen, createdAt: r.created_at,
+    }));
+    setNotifications(rows);
+  };
+
+  const markNotificationsSeen = async () => {
+    if (!address) return;
+    setNotifications((prev) => prev.map((n) => ({ ...n, seen: true })));
+    await supabase.functions.invoke('notifications', {
+      body: { action: 'markSeen', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address },
+    }).catch(() => {});
+  };
+
+  const unseenNotifCount = notifications.filter((n) => !n.seen).length;
+
+  // Called right after a purchase confirms, once per seller involved -
+  // writes the notification row (powers the bell) and best-effort sends a
+  // push in the same call, so both channels reuse one round trip.
+  const notifySeller = async (sellerAddress: string, orderId: number, listingName: string) => {
+    await supabase.functions.invoke('notifications', {
+      body: {
+        action: 'create',
+        contractAddress: MARKETPLACE_ADDRESS,
+        walletAddress: sellerAddress,
+        orderId,
+        title: 'New order received',
+        notifBody: `Someone just bought "${listingName}" from your shop.`,
+      },
+    }).catch((e) => console.error('Failed to notify seller:', e));
+  };
+
+  // Registers the service worker and subscribes this browser to push - only
+  // runs after the seller explicitly agrees, since browsers require a user
+  // gesture before asking for notification permission.
+  const enablePushNotifications = async () => {
+    if (!address) return;
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('Push notifications aren\'t supported in this browser.');
+        return;
+      }
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') return;
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+
+      const { error } = await supabase.functions.invoke('notifications', {
+        body: { action: 'subscribe', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, subscription },
+      });
+      if (error) { console.error('Failed to save push subscription:', error); return; }
+      setPushEnabled(true);
+      localStorage.setItem(`openspace_push_enabled_${address.toLowerCase()}`, 'true');
+    } catch (e) {
+      console.error('Failed to enable push notifications:', e);
+    }
+  };
+
+  // Restores whether this wallet already turned push on, so the "Enable
+  // Notifications" prompt doesn't nag someone who already said yes.
+  useEffect(() => {
+    if (!address) return;
+    setPushEnabled(localStorage.getItem(`openspace_push_enabled_${address.toLowerCase()}`) === 'true');
+    setPushPromptDismissed(sessionStorage.getItem(`openspace_push_dismissed_${address.toLowerCase()}`) === 'true');
+  }, [address]);
+
+  // Polls for new notifications while connected - same lightweight pattern
+  // already used for chat activity.
+  useEffect(() => {
+    if (!address) return;
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 8000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address]);
 
   const loadSiteAnalytics = async () => {
     if (!address) return;
@@ -1688,7 +1801,8 @@ export default function Ecommerce() {
     if (!shippingForm.fullName.trim() || !shippingForm.address.trim()) { alert('Please fill in at least your name and address'); return; }
     if (cart.length === 0 || !cartCurrency) return;
     const sellerAddresses = cart.map((line) => getListingById(line.listingId)?.seller || '');
-    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length, sellerAddresses });
+    const listingNames = cart.map((line) => getListingById(line.listingId)?.name || 'an item');
+    setPendingShippingSave({ info: shippingForm, startOrderCount: oCount, numItems: cart.length, sellerAddresses, listingNames });
     proceedToCheckout(cart, cartCurrency);
     setCart([]);
     setCartCurrency(null);
@@ -1994,6 +2108,39 @@ export default function Ecommerce() {
               {cart.length > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{cart.length}</span>)}
             </button>
 
+            {isConnected && (
+              <div className="relative">
+                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-amber-400/30">
+                  🔔
+                  {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
+                </button>
+                {notifBellOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setNotifBellOpen(false)} />
+                    <div className={`absolute right-0 mt-2 w-80 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto`}>
+                      <div className={`px-4 py-3 border-b ${cardBorder} flex items-center justify-between`}>
+                        <p className="font-semibold text-sm">Notifications</p>
+                        {!pushEnabled && (
+                          <button onClick={enablePushNotifications} className="text-[11px] text-sky-500 hover:text-sky-600 font-medium">Enable push</button>
+                        )}
+                      </div>
+                      {notifications.length === 0 ? (
+                        <p className={`text-sm ${subtleText} text-center py-8 px-4`}>No notifications yet.</p>
+                      ) : (
+                        notifications.map((n) => (
+                          <div key={n.id} className={`px-4 py-3 border-b ${cardBorder} last:border-b-0 ${!n.seen ? (darkMode ? 'bg-white/5' : 'bg-lime-50') : ''}`}>
+                            <p className="text-sm font-medium">{n.title}</p>
+                            <p className={`text-xs ${subtleText} mt-0.5`}>{n.body}</p>
+                            <p className={`text-[10px] ${subtleText} mt-1`}>{new Date(n.createdAt).toLocaleString()}</p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="relative">
               <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-lg shadow-md shadow-lime-400/30">
                 ☰
@@ -2208,16 +2355,24 @@ export default function Ecommerce() {
               </div>
               {isConnected && sellerProfile && (
                 <div className="relative">
-                  <button onClick={() => setSellPageMenuOpen((v) => !v)} className="flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                  <button onClick={() => setSellPageMenuOpen((v) => !v)} className="relative flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
                     {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : sellSubTab === 'history' ? '📜 Sold History' : '📢 Sponsored Ads'}
                     <span className="text-xs">▾</span>
+                    {myOrdersToFulfill.length > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                    )}
                   </button>
                   {sellPageMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setSellPageMenuOpen(false)} />
                       <div className={`absolute right-0 mt-2 w-56 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
                         <button onClick={() => { setSellSubTab('list'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'list' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📝 List an Item</button>
-                        <button onClick={() => { setSellSubTab('fulfill'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'fulfill' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📦 Orders to Fulfill {myOrdersToFulfill.length > 0 ? `(${myOrdersToFulfill.length})` : ''}</button>
+                        <button onClick={() => { setSellSubTab('fulfill'); setSellPageMenuOpen(false); }} className={`relative w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'fulfill' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                          📦 Orders to Fulfill {myOrdersToFulfill.length > 0 ? `(${myOrdersToFulfill.length})` : ''}
+                          {myOrdersToFulfill.length > 0 && (
+                            <span className="absolute top-2 right-3 w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                          )}
+                        </button>
                         <button onClick={() => { setSellSubTab('history'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'history' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📜 Sold History {mySoldHistory.length > 0 ? `(${mySoldHistory.length})` : ''}</button>
                         <button onClick={() => { setSellSubTab('ads'); setSellPageMenuOpen(false); }} className={`w-full text-left px-4 py-3 text-sm font-medium ${sellSubTab === 'ads' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>📢 Sponsored Ads</button>
                       </div>
@@ -2462,6 +2617,15 @@ export default function Ecommerce() {
 
                 {sellSubTab === 'fulfill' && (
                   <div>
+                    {!pushEnabled && !pushPromptDismissed && (
+                      <div className={`mb-4 p-3 rounded-xl border ${cardBorder} ${darkMode ? 'bg-white/5' : 'bg-zinc-50'} flex items-center justify-between gap-3 flex-wrap`}>
+                        <p className={`text-xs ${subtleText}`}>🔔 Get notified the moment someone buys from you, even with the tab closed.</p>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={enablePushNotifications} className="px-3 py-1.5 text-xs font-semibold bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-lg">Enable Notifications</button>
+                          <button onClick={() => { setPushPromptDismissed(true); if (address) sessionStorage.setItem(`openspace_push_dismissed_${address.toLowerCase()}`, 'true'); }} className={`text-xs ${subtleText}`}>Not now</button>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                       <h3 className="font-semibold text-lg">Orders to Fulfill</h3>
                       {myOrdersToFulfill.length > 0 && !sellerShipAuth && (
