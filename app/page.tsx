@@ -3475,10 +3475,10 @@ export default function Ecommerce() {
 
       {shippingModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[90vh] overflow-y-auto`}>
             <h3 className="font-semibold text-lg mb-1">Shipping Details</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Saved securely so your seller can view it to ship your order.</p>
-            <div className="space-y-3 mb-5 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="space-y-3 mb-5">
               <input type="text" placeholder="Full Name" value={shippingForm.fullName} onChange={(e) => setShippingForm({ ...shippingForm, fullName: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               <input type="text" placeholder="Street Address" value={shippingForm.address} onChange={(e) => setShippingForm({ ...shippingForm, address: e.target.value })} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
               <div className="grid grid-cols-2 gap-3">
@@ -3489,7 +3489,16 @@ export default function Ecommerce() {
                 <label className={`text-xs ${subtleText} block mb-1`}>Country</label>
                 <select
                   value={shippingForm.country}
-                  onChange={(e) => setShippingForm({ ...shippingForm, country: e.target.value })}
+                  onChange={(e) => {
+                    const chosenCountry = e.target.value;
+                    const match = COUNTRIES.find((c) => c.name === chosenCountry);
+                    // Picking a country updates the phone dial code to match it
+                    // automatically - the buyer almost always ships to their
+                    // own country's number format anyway.
+                    if (match) setShippingDialCode(match.dial);
+                    const newDial = match ? match.dial : shippingDialCode;
+                    setShippingForm({ ...shippingForm, country: chosenCountry, phone: shippingPhoneLocal ? `${newDial} ${shippingPhoneLocal}` : '' });
+                  }}
                   className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                 >
                   <option value="" style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>Select a country</option>
@@ -3501,15 +3510,19 @@ export default function Ecommerce() {
               <div>
                 <label className={`text-xs ${subtleText} block mb-1`}>Phone (optional)</label>
                 <div className="flex gap-2">
-                  <select
+                  <input
+                    type="text"
+                    list="dial-code-options"
+                    placeholder="+1"
                     value={shippingDialCode}
                     onChange={(e) => { setShippingDialCode(e.target.value); setShippingForm({ ...shippingForm, phone: shippingPhoneLocal ? `${e.target.value} ${shippingPhoneLocal}` : '' }); }}
-                    className={`w-28 shrink-0 ${inputBg} border ${cardBorder} rounded-xl px-2 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`}
-                  >
+                    className={`w-24 shrink-0 ${inputBg} border ${cardBorder} rounded-xl px-3 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm`}
+                  />
+                  <datalist id="dial-code-options">
                     {COUNTRIES.map((c) => (
-                      <option key={c.code} value={c.dial} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c.dial} {c.code}</option>
+                      <option key={c.code} value={c.dial}>{c.name}</option>
                     ))}
-                  </select>
+                  </datalist>
                   <input
                     type="tel"
                     placeholder="Phone number"
@@ -3518,6 +3531,7 @@ export default function Ecommerce() {
                     className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                   />
                 </div>
+                <p className={`text-[11px] ${subtleText} mt-1`}>Type to search (e.g. "+234" or "Nigeria"), or it fills in automatically from the country above.</p>
               </div>
             </div>
             {checkoutSummary && (
