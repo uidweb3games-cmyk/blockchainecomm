@@ -466,8 +466,14 @@ export default function Ecommerce() {
   const [caseStatusMap, setCaseStatusMap] = useState<Record<number, { claimedBy: string | null; note: string }>>({});
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [pendingShippingSave, setPendingShippingSave] = useState<{ info: ShippingInfo; startOrderCount: number; numItems: number; sellerAddresses: string[]; listingNames: string[] } | null>(null);
+  // Tracks a single in-flight blockchain action so its notification can fire
+  // only once that specific transaction confirms - reused for shipping
+  // status updates, cancellations, and disputes, which all share the same
+  // global tx-confirmed flag as every other button on the page.
+  const [pendingActionNotify, setPendingActionNotify] = useState<{ toAddress: string; title: string; body: string; orderId: number } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
   const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
+  const lowStockAlertedRef = useRef<Set<number>>(new Set());
   const [notifBellOpen, setNotifBellOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -846,6 +852,29 @@ export default function Ecommerce() {
 
   const getListingById = (id: number) => allListings.find((l) => l.id === id);
 
+  const LOW_STOCK_THRESHOLD = 3;
+  // Watches the seller's own simple (non-variant) listings for low stock and
+  // notifies once per dip below the threshold - clears itself once stock is
+  // restocked above the threshold, so a future dip notifies again. Scoped to
+  // simple-stock items only for now; variant (color/size) stock would need
+  // per-combo reads for every one of a seller's listings, which isn't loaded
+  // in bulk on this screen today.
+  useEffect(() => {
+    if (!address) return;
+    const mine = allListings.filter((l) => !l.hasVariants && !l.delisted && l.seller.toLowerCase() === address.toLowerCase());
+    mine.forEach((l) => {
+      const stock = Number(l.simpleStock);
+      const alreadyAlerted = lowStockAlertedRef.current.has(l.id);
+      if (stock > 0 && stock <= LOW_STOCK_THRESHOLD && !alreadyAlerted) {
+        lowStockAlertedRef.current.add(l.id);
+        sendNotification(address, '📦 Low stock', `"${l.name}" is down to ${stock} left in stock.`);
+      } else if (stock > LOW_STOCK_THRESHOLD && alreadyAlerted) {
+        lowStockAlertedRef.current.delete(l.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, allListings.map((l) => `${l.id}:${l.simpleStock}`).join(',')]);
+
   // For the "Verified Seller" badge - checks which sellers currently shown
   // in the shop have completed their shop profile setup. Public lookup, no
   // signature needed.
@@ -1047,6 +1076,15 @@ export default function Ecommerce() {
       setResolveCenterOpen(false);
     }
   }, [txConfirmed, resolvingDispute]);
+
+  // Fires a queued notification once its specific transaction confirms -
+  // see pendingActionNotify above for why this indirection is needed.
+  useEffect(() => {
+    if (!(txConfirmed && pendingActionNotify)) return;
+    sendNotification(pendingActionNotify.toAddress, pendingActionNotify.title, pendingActionNotify.body, pendingActionNotify.orderId);
+    setPendingActionNotify(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed, pendingActionNotify]);
 
   // Runs the edit-listing queue one transaction at a time: fires the next
   // queued call only after the previous one actually confirms on-chain,
@@ -1267,6 +1305,10 @@ export default function Ecommerce() {
       // Quietly sync with the server in the background - the message is
       // already showing, this just confirms it and picks up anything new.
       loadChatMessages(orderId, true);
+      // The notification stays generic ("you have a new message") on purpose -
+      // chat is end-to-end encrypted, and the notification system never has
+      // access to the actual plaintext, only that a message was sent.
+      sendNotification(toAddress, '💬 New message', 'You have a new message about one of your orders.', orderId);
     } catch (e) {
       console.error('Failed to send message:', e);
     }
@@ -1354,6 +1396,8 @@ export default function Ecommerce() {
       });
       if (error) { console.error('Failed to submit review:', error); alert('Failed to submit review. Please try again.'); return; }
       await loadSellerReviews(sellerAddress);
+      const reviewedListing = getListingById(listingId);
+      sendNotification(sellerAddress, '⭐ New review', `You got a ${reviewRating}-star review${reviewedListing ? ` on "${reviewedListing.name}"` : ''}.`, orderId);
       setReviewModalOrderId(null);
     } catch (e) {
       console.error('Failed to submit review:', e);
@@ -1510,17 +1554,25 @@ export default function Ecommerce() {
   // Called right after a purchase confirms, once per seller involved -
   // writes the notification row (powers the bell) and best-effort sends a
   // push in the same call, so both channels reuse one round trip.
-  const notifySeller = async (sellerAddress: string, orderId: number, listingName: string) => {
+  // General-purpose notifier - any event (order, message, review, dispute,
+  // shipping update, low stock, etc) sends its own title/body through this
+  // one function, so every notification type reuses the same bell + push
+  // pipeline instead of each needing its own plumbing.
+  const sendNotification = async (walletAddress: string, title: string, body: string, orderId?: number) => {
     await supabase.functions.invoke('notifications', {
       body: {
         action: 'create',
         contractAddress: MARKETPLACE_ADDRESS,
-        walletAddress: sellerAddress,
-        orderId,
-        title: 'New order received',
-        notifBody: `Someone just bought "${listingName}" from your shop.`,
+        walletAddress,
+        orderId: orderId ?? null,
+        title,
+        notifBody: body,
       },
-    }).catch((e) => console.error('Failed to notify seller:', e));
+    }).catch((e) => console.error('Failed to send notification:', e));
+  };
+
+  const notifySeller = async (sellerAddress: string, orderId: number, listingName: string) => {
+    await sendNotification(sellerAddress, 'New order received', `Someone just bought "${listingName}" from your shop.`, orderId);
   };
 
   // Registers the service worker and subscribes this browser to push - only
@@ -1967,7 +2019,11 @@ export default function Ecommerce() {
 
   const handleAdminDelist = () => {
     if (!modListingId || !modReason.trim()) { alert('Please enter a listing ID and a reason'); return; }
+    const targetListing = getListingById(Number(modListingId));
     call('adminDelistItem', [BigInt(modListingId), modReason.trim()]);
+    if (targetListing) {
+      sendNotification(targetListing.seller, '🏪 Listing removed', `"${targetListing.name}" was removed by an admin. Reason: ${modReason.trim()}`);
+    }
     setModListingId(''); setModReason('');
   };
 
@@ -2213,7 +2269,19 @@ export default function Ecommerce() {
       }
       if (context === 'seller' && isSeller) {
         return (
-          <button onClick={() => call('cancelAndRefund', [BigInt(order.id)])} disabled={isPending} className={`w-full py-2 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}>
+          <button
+            onClick={() => {
+              setPendingActionNotify({
+                toAddress: order.buyer,
+                title: '❌ Order cancelled',
+                body: `"${listing.name}" was cancelled and refunded by the seller.`,
+                orderId: order.id,
+              });
+              call('cancelAndRefund', [BigInt(order.id)]);
+            }}
+            disabled={isPending}
+            className={`w-full py-2 ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-zinc-100 hover:bg-zinc-200'} rounded-xl text-sm font-medium transition-colors`}
+          >
             Cancel &amp; Refund Buyer
           </button>
         );
@@ -2265,7 +2333,19 @@ export default function Ecommerce() {
                 <div className="h-full bg-gradient-to-r from-sky-400 to-lime-400 transition-all duration-500" style={{ width: `${(order.shippingStatus / 2) * 100}%` }} />
               </div>
               {context === 'seller' && isSeller && order.shippingStatus < 2 && !order.released && !order.disputed && (
-                <button onClick={() => call('updateShippingStatus', [BigInt(order.id), order.shippingStatus + 1])} className="mt-2 text-xs text-sky-500 hover:text-sky-600 font-medium">
+                <button
+                  onClick={() => {
+                    const newStatus = order.shippingStatus + 1;
+                    setPendingActionNotify({
+                      toAddress: order.buyer,
+                      title: newStatus === 2 ? '📦 Order delivered' : '📦 Order shipped',
+                      body: `"${listing.name}" is now marked as ${SHIPPING_LABELS[newStatus]}.`,
+                      orderId: order.id,
+                    });
+                    call('updateShippingStatus', [BigInt(order.id), newStatus]);
+                  }}
+                  className="mt-2 text-xs text-sky-500 hover:text-sky-600 font-medium"
+                >
                   Mark as {SHIPPING_LABELS[order.shippingStatus + 1]} →
                 </button>
               )}
@@ -3729,7 +3809,25 @@ export default function Ecommerce() {
                 return (
                   <div key={order.id} className={`flex items-center justify-between p-3 rounded-xl border ${cardBorder}`}>
                     <div><p className="font-medium text-sm">{listing?.name || `Order #${order.id}`}</p><p className={`text-xs ${subtleText}`}>You are the {role}</p></div>
-                    <button onClick={() => { call('raiseDispute', [BigInt(order.id)]); setDisputeCenterOpen(false); }} disabled={isPending} className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50">Raise Dispute</button>
+                    <button
+                      onClick={() => {
+                        const otherParty = role === 'Buyer' ? listing?.seller : order.buyer;
+                        if (otherParty) {
+                          setPendingActionNotify({
+                            toAddress: otherParty,
+                            title: '⚠️ Dispute raised',
+                            body: `A dispute was opened on "${listing?.name || `Order #${order.id}`}". Check the Dispute Queue for details.`,
+                            orderId: order.id,
+                          });
+                        }
+                        call('raiseDispute', [BigInt(order.id)]);
+                        setDisputeCenterOpen(false);
+                      }}
+                      disabled={isPending}
+                      className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
+                    >
+                      Raise Dispute
+                    </button>
                   </div>
                 );
               })}
