@@ -920,6 +920,7 @@ export default function Ecommerce() {
           fullName: row.full_name,
           address: row.street_address,
           city: row.city || '',
+          state: row.state || '',
           country: row.country || '',
           phone: row.phone || '',
         };
