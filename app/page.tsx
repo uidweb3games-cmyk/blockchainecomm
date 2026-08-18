@@ -328,19 +328,33 @@ function MiniStatChart({ value, max, color }: { value: number; max: number; colo
   );
 }
 
-function OpenSpaceLogo({ className }: { className?: string }) {
+function OpenSpaceSymbol({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 520 260" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 210 220" className={className} xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="osGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="osSymGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a3e635" />
           <stop offset="100%" stopColor="#38bdf8" />
         </linearGradient>
       </defs>
-      <path d="M 162 106 A 78 78 0 1 0 162 174" fill="none" stroke="url(#osGrad)" strokeWidth="24" strokeLinecap="round" />
-      <text x="172" y="105" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" fill="url(#osGrad)">PEN</text>
-      <text x="78" y="165" fontFamily="system-ui, sans-serif" fontSize="72" fontWeight="900" letterSpacing="1" fill="url(#osGrad)">SPACE</text>
+      {/* Ring - a thick "C" shape with the gap facing right, rounded ends */}
+      <path d="M 170.5 59.1 A 80 80 0 1 1 170.5 150.9" fill="none" stroke="url(#osSymGrad)" strokeWidth="34" strokeLinecap="round" />
+      {/* Shopping cart icon, centered inside the ring */}
+      <path d="M 63 78 L 74 78 L 80 104 L 126 104 L 119 124 L 88 124 Z" fill="none" stroke="url(#osSymGrad)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="94" cy="134" r="5.5" fill="url(#osSymGrad)" />
+      <circle cx="113" cy="134" r="5.5" fill="url(#osSymGrad)" />
+      {/* Motion swoosh beneath the cart, sweeping out past the ring's gap */}
+      <path d="M 55 150 Q 100 118 195 100" fill="none" stroke="url(#osSymGrad)" strokeWidth="4" strokeLinecap="round" />
     </svg>
+  );
+}
+
+function OpenSpaceBrand({ imgClassName, textClassName }: { imgClassName?: string; textClassName?: string }) {
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <OpenSpaceSymbol className={imgClassName} />
+      <span className={`font-black tracking-tight bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent ${textClassName}`}>OpenSpace</span>
+    </div>
   );
 }
 
@@ -2397,7 +2411,7 @@ export default function Ecommerce() {
 
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-3 flex items-center justify-between gap-3">
           <button onClick={() => { setActiveTab('shop'); setQuickViewId(null); setMenuOpen(false); }} className="shrink-0" aria-label="Go to homepage">
-            <OpenSpaceLogo className="h-12 sm:h-16 w-auto" />
+            <OpenSpaceBrand imgClassName="h-10 sm:h-14 w-auto" textClassName="text-xl sm:text-2xl" />
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -3075,7 +3089,7 @@ export default function Ecommerce() {
 
       <footer className={`border-t ${cardBorder} mt-12`}>
         <div className="max-w-6xl mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <OpenSpaceLogo className="h-9 w-auto" />
+          <OpenSpaceBrand imgClassName="h-8 w-auto" textClassName="text-lg" />
           <p className={`text-xs ${subtleText}`}>Running on BNB Smart Chain Testnet</p>
         </div>
       </footer>
