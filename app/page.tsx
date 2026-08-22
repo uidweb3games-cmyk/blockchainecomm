@@ -521,7 +521,7 @@ export default function Ecommerce() {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string }[]>>({});
+  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; listingId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string }[]>>({});
   const [evidenceNote, setEvidenceNote] = useState('');
   const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
   const [evidenceUploading, setEvidenceUploading] = useState(false);
@@ -1483,7 +1483,7 @@ export default function Ecommerce() {
     });
     if (error) { console.error('Failed to load reviews:', error); return; }
     const rows = (data?.data || []).map((r: any) => ({
-      orderId: r.order_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at,
+      orderId: r.order_id, listingId: r.listing_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at,
     }));
     setSellerReviewsMap((prev) => ({ ...prev, [sellerAddress.toLowerCase()]: rows }));
   };
@@ -1858,6 +1858,7 @@ export default function Ecommerce() {
     setZoomOrigin({ x: 50, y: 50 });
     setPickedColor('');
     setPickedSize('');
+    setQvReviewFilter('all');
   }, [quickViewId]);
 
   // Shop name for whoever is selling the item currently open in Quick View -
@@ -1903,6 +1904,7 @@ export default function Ecommerce() {
   // Specifications + Description for the item open in Quick View - same
   // public, no-signature read as the media above.
   const [qvDescription, setQvDescription] = useState('');
+  const [qvReviewFilter, setQvReviewFilter] = useState<'all' | 1 | 2 | 3 | 4 | 5>('all');
   const [qvSpecs, setQvSpecs] = useState<{ label: string; value: string }[]>([]);
   useEffect(() => {
     if (!quickViewId) { setQvDescription(''); setQvSpecs([]); return; }
@@ -4120,6 +4122,72 @@ export default function Ecommerce() {
                   <p className={`text-sm ${subtleText} whitespace-pre-wrap`}>{qvDescription}</p>
                 </div>
               )}
+
+              {(() => {
+                // Reviews are now filtered down to just THIS item, using
+                // the listing_id already stored on each review row (the
+                // backend already had this data, it just wasn't being
+                // used on the display side until now - no Edge Function
+                // or database change was needed for this).
+                const allReviews = (sellerReviewsMap[quickViewListing.seller.toLowerCase()] || []).filter((r) => r.listingId === quickViewListing.id);
+                if (allReviews.length === 0) return null;
+                const counts = [5, 4, 3, 2, 1].map((star) => ({
+                  star, count: allReviews.filter((r) => r.rating === star).length,
+                }));
+                const total = allReviews.length;
+                const average = allReviews.reduce((sum, r) => sum + r.rating, 0) / total;
+                const filtered = qvReviewFilter === 'all' ? allReviews : allReviews.filter((r) => r.rating === qvReviewFilter);
+                return (
+                  <div className="mt-6">
+                    <h4 className="font-semibold text-sm mb-3">Customer Reviews ({total})</h4>
+                    <div className="flex items-start gap-6 mb-4 flex-wrap">
+                      <div className="shrink-0">
+                        <p className="text-3xl font-bold">{average.toFixed(1)}</p>
+                        <p className="text-amber-400 text-sm">{'★'.repeat(Math.round(average))}{'☆'.repeat(5 - Math.round(average))}</p>
+                      </div>
+                      <div className="flex-1 min-w-[140px] space-y-1">
+                        {counts.map(({ star, count }) => (
+                          <div key={star} className="flex items-center gap-2 text-[11px]">
+                            <span className={`w-5 text-right ${subtleText}`}>{star}★</span>
+                            <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-zinc-100'}`}>
+                              <div className="h-full bg-amber-400" style={{ width: total > 0 ? `${(count / total) * 100}%` : '0%' }} />
+                            </div>
+                            <span className={`w-6 ${subtleText}`}>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                      <button onClick={() => setQvReviewFilter('all')} className={`px-2.5 py-1 rounded-full text-[11px] font-medium border ${qvReviewFilter === 'all' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>All ({total})</button>
+                      {counts.filter((c) => c.count > 0).map(({ star, count }) => (
+                        <button key={star} onClick={() => setQvReviewFilter(star as 1 | 2 | 3 | 4 | 5)} className={`px-2.5 py-1 rounded-full text-[11px] font-medium border ${qvReviewFilter === star ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>{star}★ ({count})</button>
+                      ))}
+                    </div>
+
+                    <div className="space-y-4">
+                      {filtered.map((r) => {
+                        const order = allOrders.find((o) => o.id === r.orderId);
+                        return (
+                          <div key={r.orderId} className={`pb-4 border-b ${cardBorder} last:border-b-0 last:pb-0`}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-amber-400 text-xs">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</span>
+                              <span className={`text-[10px] ${subtleText}`}>{new Date(r.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            {order && (order.color || order.size) && (
+                              <p className={`text-[10px] ${subtleText} mb-1`}>
+                                {order.color && `Color: ${order.color}`}{order.color && order.size ? ' · ' : ''}{order.size && `Size: ${order.size}`}
+                              </p>
+                            )}
+                            {r.reviewText && <p className="text-sm">{r.reviewText}</p>}
+                            <p className={`text-[10px] ${subtleText} font-mono mt-1`}>{r.buyerAddress.slice(0, 6)}...{r.buyerAddress.slice(-4)}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
