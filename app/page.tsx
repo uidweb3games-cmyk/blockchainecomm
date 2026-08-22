@@ -1900,6 +1900,21 @@ export default function Ecommerce() {
     }).catch(() => setQvMediaList([])).finally(() => setQvMediaLoading(false));
   }, [quickViewId]);
 
+  // Specifications + Description for the item open in Quick View - same
+  // public, no-signature read as the media above.
+  const [qvDescription, setQvDescription] = useState('');
+  const [qvSpecs, setQvSpecs] = useState<{ label: string; value: string }[]>([]);
+  useEffect(() => {
+    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); return; }
+    supabase.functions.invoke('listing-details', {
+      body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load listing details:', error); return; }
+      setQvDescription(data?.data?.description || '');
+      setQvSpecs(data?.data?.specs || []);
+    }).catch(() => {});
+  }, [quickViewId]);
+
   // Steps forward/back through the full gallery (the default photo, plus
   // every uploaded photo/video, in the same order the thumbnail rail shows
   // them) - powers the prev/next arrows on the main display, wrapping
@@ -4083,6 +4098,27 @@ export default function Ecommerce() {
 
               {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) && (
                 <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
+              )}
+
+              {qvSpecs.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="font-semibold text-sm mb-2">Specifications</h4>
+                  <div className={`rounded-xl border ${cardBorder} divide-y ${darkMode ? 'divide-white/10' : 'divide-zinc-100'} overflow-hidden`}>
+                    {qvSpecs.map((spec, i) => (
+                      <div key={i} className="flex text-xs">
+                        <span className={`w-1/3 shrink-0 px-3 py-2 font-medium ${darkMode ? 'bg-white/5' : 'bg-zinc-50'}`}>{spec.label}</span>
+                        <span className="flex-1 px-3 py-2">{spec.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {qvDescription.trim() && (
+                <div className="mt-6">
+                  <h4 className="font-semibold text-sm mb-2">Description</h4>
+                  <p className={`text-sm ${subtleText} whitespace-pre-wrap`}>{qvDescription}</p>
+                </div>
               )}
             </div>
 
