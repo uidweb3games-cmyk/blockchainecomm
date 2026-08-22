@@ -1852,6 +1852,9 @@ export default function Ecommerce() {
   const [qvMediaList, setQvMediaList] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [qvMediaLoading, setQvMediaLoading] = useState(false);
   const [qvSelectedMediaIndex, setQvSelectedMediaIndex] = useState<number | null>(null);
+  const qvVideoRef = useRef<HTMLVideoElement>(null);
+  const [qvVideoPlaying, setQvVideoPlaying] = useState(true);
+  const [qvVideoMuted, setQvVideoMuted] = useState(true);
   useEffect(() => {
     setQvSelectedMediaIndex(null);
     if (!quickViewId) { setQvMediaList([]); setQvMediaLoading(false); return; }
@@ -1876,6 +1879,13 @@ export default function Ecommerce() {
     const nextPos = (currentPos + direction + total) % total;
     setQvSelectedMediaIndex(nextPos === 0 ? null : nextPos - 1);
   };
+
+  // A newly-selected video always starts playing (autoplay), so the play/
+  // pause overlay icon should reflect that from the start, not whatever
+  // the previous video was left showing.
+  useEffect(() => {
+    setQvVideoPlaying(true);
+  }, [qvSelectedMediaIndex]);
 
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
@@ -3707,7 +3717,7 @@ export default function Ecommerce() {
                   thumbnails stay cropped-to-square since they're just
                   small previews. */}
               <div
-                className={`flex-1 min-w-0 h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
+                className={`flex-1 min-w-0 h-full ${qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video' ? 'bg-black' : darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
                 onMouseMove={(e) => {
                   if (qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video') return;
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -3738,14 +3748,46 @@ export default function Ecommerce() {
                 onTouchEnd={() => setZoomActive(false)}
               >
                 {qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video' ? (
-                  <video
-                    src={qvMediaList[qvSelectedMediaIndex].url}
-                    className="w-full h-full object-contain"
-                    controls
-                    autoPlay
-                    muted
-                    playsInline
-                  />
+                  <div
+                    className="w-full h-full relative"
+                    onClick={(e) => {
+                      // Custom play/pause instead of relying on the browser's
+                      // built-in video controls - native controls only
+                      // toggle play when you click the exact visible video
+                      // frame, not the black letterbox padding around it.
+                      // Making our own full-box tap target (matching how
+                      // AliExpress's player behaves) means it can't conflict
+                      // with a second, separate native click-handler.
+                      e.stopPropagation();
+                      const v = qvVideoRef.current;
+                      if (!v) return;
+                      if (v.paused) v.play(); else v.pause();
+                    }}
+                  >
+                    <video
+                      ref={qvVideoRef}
+                      src={qvMediaList[qvSelectedMediaIndex].url}
+                      className="w-full h-full object-contain"
+                      autoPlay
+                      muted={qvVideoMuted}
+                      playsInline
+                      loop
+                      onPlay={() => setQvVideoPlaying(true)}
+                      onPause={() => setQvVideoPlaying(false)}
+                    />
+                    {!qvVideoPlaying && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="w-14 h-14 rounded-full bg-black/50 flex items-center justify-center text-white text-2xl">▶</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setQvVideoMuted((m) => !m); }}
+                      aria-label={qvVideoMuted ? 'Unmute' : 'Mute'}
+                      className="absolute bottom-3 left-3 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center text-sm"
+                    >
+                      {qvVideoMuted ? '🔇' : '🔊'}
+                    </button>
+                  </div>
                 ) : (
                   <img
                     src={qvSelectedMediaIndex !== null ? qvMediaList[qvSelectedMediaIndex].url : getQvDisplayImage()}
