@@ -791,7 +791,7 @@ export default function Ecommerce() {
   const copySettingsAddress = () => { if (address) { navigator.clipboard.writeText(address); setSettingsAddressCopied(true); setTimeout(() => setSettingsAddressCopied(false), 2000); } };
 
   // ---------- CONTRACT READS ----------
-  const { data: listingCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingCount' });
+  const { data: listingCount, refetch: refetchListingCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'listingCount' });
   const { data: orderCount, refetch: refetchOrderCount } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'orderCount' });
   const { data: adminAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'admin' });
   const { data: feeWalletAddress } = useReadContract({ address: MARKETPLACE_ADDRESS, abi: MARKETPLACE_ABI, functionName: 'feeWallet' });
@@ -1155,8 +1155,11 @@ export default function Ecommerce() {
   useEffect(() => {
     if (!(txConfirmed && pendingListingMedia && address)) return;
     (async () => {
-      const result = await refetchListings();
-      const newCount = result.data ? result.data.length : lCount;
+      // Same real fix as the fresh-count check above: read the actual
+      // on-chain counter, not the app's cached listing array (whose
+      // length never grows past what it already knew about).
+      const result = await refetchListingCount();
+      const newCount = result.data !== undefined ? Number(result.data) : lCount;
       const newListingId = pendingListingMedia.startListingCount + 1;
       if (newListingId > newCount) { setPendingListingMedia(null); return; }
       try {
@@ -1179,8 +1182,11 @@ export default function Ecommerce() {
   useEffect(() => {
     if (!(txConfirmed && pendingListingDetails && address)) return;
     (async () => {
-      const result = await refetchListings();
-      const newCount = result.data ? result.data.length : lCount;
+      // Same real fix as the fresh-count check above: read the actual
+      // on-chain counter, not the app's cached listing array (whose
+      // length never grows past what it already knew about).
+      const result = await refetchListingCount();
+      const newCount = result.data !== undefined ? Number(result.data) : lCount;
       const newListingId = pendingListingDetails.startListingCount + 1;
       if (newListingId > newCount) { setPendingListingDetails(null); return; }
       try {
@@ -1981,14 +1987,15 @@ export default function Ecommerce() {
     }
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    // Get a fresh, live listing count right before submitting - the cached
-    // count could be a beat behind (e.g. right after listing something else
-    // moments earlier), which would silently attach these extra photos/
-    // specs to the wrong listing ID.
+    // Get a fresh, live listing count right before submitting - this reads
+    // the actual on-chain counter itself, not the app's cached list of
+    // known listings (which only re-reads whatever range it already knew
+    // about, so its "length" never actually grows on its own - that was
+    // the real bug behind extra photos/specs attaching to the wrong ID).
     let currentCount = lCount;
     try {
-      const freshResult = await refetchListings();
-      if (freshResult.data) currentCount = freshResult.data.length;
+      const freshResult = await refetchListingCount();
+      if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
     if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
@@ -2018,8 +2025,8 @@ export default function Ecommerce() {
     // Same freshness fix as handleListSimple above.
     let currentCount = lCount;
     try {
-      const freshResult = await refetchListings();
-      if (freshResult.data) currentCount = freshResult.data.length;
+      const freshResult = await refetchListingCount();
+      if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
     if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
@@ -3891,11 +3898,12 @@ export default function Ecommerce() {
                 causing thumbnails to get cut off before. */}
             <div className="w-full md:w-[380px] md:shrink-0 aspect-square md:aspect-auto md:h-full flex flex-row">
               {/* Thumbnail rail - the on-chain main/color photo first, then
-                  any extra photos/video the seller uploaded. Only shows up
-                  at all once there's more than one thing to switch between. */}
-              {(qvMediaList.length > 0 || qvMediaLoading) && (
-                <div className={`w-14 h-full shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
-                  <button
+                  any extra photos/video the seller uploaded. Always shown,
+                  even with nothing extra to switch to, so the layout stays
+                  consistent instead of jumping around depending on whether
+                  a given item happens to have extra media. */}
+              <div className={`w-14 h-full shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
+                <button
                     onClick={() => setQvSelectedMediaIndex(null)}
                     className={`w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 ${qvSelectedMediaIndex === null ? 'border-lime-400' : 'border-transparent'}`}
                   >
@@ -3923,7 +3931,6 @@ export default function Ecommerce() {
                     <div className="w-11 h-11 rounded-lg shrink-0 bg-black/10 animate-pulse" />
                   )}
                 </div>
-              )}
 
               {/* Main display - a video if one's selected, otherwise the
                   photo (color-aware default, or a specific uploaded photo
