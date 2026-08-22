@@ -521,7 +521,8 @@ export default function Ecommerce() {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; listingId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string }[]>>({});
+  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; listingId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string; helpfulCount: number }[]>>({});
+  const [helpfulVotedIds, setHelpfulVotedIds] = useState<Set<number>>(new Set());
   const [evidenceNote, setEvidenceNote] = useState('');
   const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
   const [evidenceUploading, setEvidenceUploading] = useState(false);
@@ -1479,13 +1480,43 @@ export default function Ecommerce() {
   // gated to submit/edit - reuses the same session signature as chat/evidence.
   const loadSellerReviews = async (sellerAddress: string) => {
     const { data, error } = await supabase.functions.invoke('reviews', {
-      body: { action: 'getReviews', contractAddress: MARKETPLACE_ADDRESS, sellerAddress },
+      body: { action: 'getReviews', contractAddress: MARKETPLACE_ADDRESS, sellerAddress, viewerAddress: address },
     });
     if (error) { console.error('Failed to load reviews:', error); return; }
     const rows = (data?.data || []).map((r: any) => ({
-      orderId: r.order_id, listingId: r.listing_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at,
+      orderId: r.order_id, listingId: r.listing_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at, helpfulCount: r.helpful_count || 0,
     }));
     setSellerReviewsMap((prev) => ({ ...prev, [sellerAddress.toLowerCase()]: rows }));
+    if (data?.votedOrderIds) setHelpfulVotedIds((prev) => new Set([...prev, ...data.votedOrderIds]));
+  };
+
+  // Toggles the current wallet's "Helpful" vote on a review - reuses the
+  // same shared cached signature as everything else, so this never asks
+  // for a fresh wallet prompt beyond the very first time ever.
+  const toggleHelpful = async (orderId: number, sellerAddress: string) => {
+    if (!address) { openWalletChoice(); return; }
+    // Optimistic update first, so the button feels instant.
+    const alreadyVoted = helpfulVotedIds.has(orderId);
+    setHelpfulVotedIds((prev) => {
+      const next = new Set(prev);
+      if (alreadyVoted) next.delete(orderId); else next.add(orderId);
+      return next;
+    });
+    setSellerReviewsMap((prev) => ({
+      ...prev,
+      [sellerAddress.toLowerCase()]: (prev[sellerAddress.toLowerCase()] || []).map((r) =>
+        r.orderId === orderId ? { ...r, helpfulCount: Math.max(0, r.helpfulCount + (alreadyVoted ? -1 : 1)) } : r
+      ),
+    }));
+    try {
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
+      await supabase.functions.invoke('reviews', {
+        body: { action: 'toggleHelpful', contractAddress: MARKETPLACE_ADDRESS, orderId, walletAddress: address, message: auth.message, signature: auth.signature },
+      });
+    } catch (e) {
+      console.error('Failed to toggle helpful vote:', e);
+    }
   };
 
   const openReviewModal = (orderId: number, sellerAddress: string) => {
@@ -1944,14 +1975,23 @@ export default function Ecommerce() {
     setNewListingSpecs([]);
   };
 
-  const handleListSimple = () => {
+  const handleListSimple = async () => {
     if (!itemName.trim() || !itemPrice || Number(itemPrice) <= 0 || !itemStock || Number(itemStock) <= 0) {
       alert('Please enter a valid name, price, and stock quantity'); return;
     }
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: lCount });
+    // Get a fresh, live listing count right before submitting - the cached
+    // count could be a beat behind (e.g. right after listing something else
+    // moments earlier), which would silently attach these extra photos/
+    // specs to the wrong listing ID.
+    let currentCount = lCount;
+    try {
+      const freshResult = await refetchListings();
+      if (freshResult.data) currentCount = freshResult.data.length;
+    } catch (e) {}
+    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
     call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
@@ -1959,7 +1999,7 @@ export default function Ecommerce() {
   const parsedColors = colorsInput.split(',').map((c) => c.trim()).filter(Boolean);
   const parsedSizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
 
-  const handleListVariants = () => {
+  const handleListVariants = async () => {
     if (!itemName.trim() || !itemPrice || Number(itemPrice) <= 0) { alert('Please enter a valid name and price'); return; }
     if (parsedColors.length === 0 && parsedSizes.length === 0) { alert('Please enter at least a color or a size'); return; }
     const effectiveColors = parsedColors.length > 0 ? parsedColors : [NO_VARIANT];
@@ -1975,8 +2015,14 @@ export default function Ecommerce() {
     const colorImagesArr = effectiveColors.map((c) => (colorImagesInput[c] || '').trim());
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
-    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: lCount });
+    // Same freshness fix as handleListSimple above.
+    let currentCount = lCount;
+    try {
+      const freshResult = await refetchListings();
+      if (freshResult.data) currentCount = freshResult.data.length;
+    } catch (e) {}
+    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
     call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
@@ -4180,7 +4226,15 @@ export default function Ecommerce() {
                               </p>
                             )}
                             {r.reviewText && <p className="text-sm">{r.reviewText}</p>}
-                            <p className={`text-[10px] ${subtleText} font-mono mt-1`}>{r.buyerAddress.slice(0, 6)}...{r.buyerAddress.slice(-4)}</p>
+                            <div className="flex items-center justify-between mt-1">
+                              <p className={`text-[10px] ${subtleText} font-mono`}>{r.buyerAddress.slice(0, 6)}...{r.buyerAddress.slice(-4)}</p>
+                              <button
+                                onClick={() => toggleHelpful(r.orderId, quickViewListing.seller)}
+                                className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg border ${helpfulVotedIds.has(r.orderId) ? 'bg-lime-400/10 border-lime-400/40 text-lime-600' : `${cardBorder} ${subtleText} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                              >
+                                👍 Helpful{r.helpfulCount > 0 ? ` (${r.helpfulCount})` : ''}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
