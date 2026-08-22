@@ -1845,6 +1845,24 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickViewListing?.seller]);
 
+  // Extra photos/video for the item open in Quick View - public read, no
+  // signature needed, same as anyone browsing can already see the main
+  // photo. Resets to the on-chain main image whenever a different item is
+  // opened.
+  const [qvMediaList, setQvMediaList] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [qvSelectedMediaIndex, setQvSelectedMediaIndex] = useState<number | null>(null);
+  useEffect(() => {
+    setQvSelectedMediaIndex(null);
+    if (!quickViewId) { setQvMediaList([]); return; }
+    supabase.functions.invoke('listing-media', {
+      body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load listing media:', error); setQvMediaList([]); return; }
+      const rows = (data?.data || []).map((r: any) => ({ url: r.url, type: r.media_type }));
+      setQvMediaList(rows);
+    }).catch(() => setQvMediaList([]));
+  }, [quickViewId]);
+
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
@@ -3624,57 +3642,109 @@ export default function Ecommerce() {
             className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto md:overflow-hidden md:max-w-5xl flex flex-col md:flex-row`}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ---------- LEFT: image ---------- */}
-            <div
-              className={`w-full md:w-[380px] md:shrink-0 aspect-square md:aspect-auto md:h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const x = ((e.clientX - rect.left) / rect.width) * 100;
-                const y = ((e.clientY - rect.top) / rect.height) * 100;
-                setZoomOrigin({ x, y });
-                setZoomActive(true);
-              }}
-              onMouseLeave={() => setZoomActive(false)}
-              onTouchStart={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const touch = e.touches[0];
-                const x = ((touch.clientX - rect.left) / rect.width) * 100;
-                const y = ((touch.clientY - rect.top) / rect.height) * 100;
-                setZoomOrigin({ x, y });
-                setZoomActive(true);
-              }}
-              onTouchMove={(e) => {
-                e.preventDefault();
-                const rect = e.currentTarget.getBoundingClientRect();
-                const touch = e.touches[0];
-                const x = ((touch.clientX - rect.left) / rect.width) * 100;
-                const y = ((touch.clientY - rect.top) / rect.height) * 100;
-                setZoomOrigin({ x, y });
-              }}
-              onTouchEnd={() => setZoomActive(false)}
-            >
-              <img
-                src={getQvDisplayImage()}
-                alt={quickViewListing.name}
-                className={`w-full h-full object-cover ${zoomActive ? 'scale-[2.4]' : 'scale-100'} transition-transform duration-100 ease-out cursor-zoom-in`}
-                style={{ transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` }}
-                onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
-              />
-              <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
-              {!isOwnQuickViewListing && (
-                <button
-                  disabled={!canAddQuickViewToCart}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
-                    setQuickViewId(null);
-                  }}
-                  aria-label="Add to cart"
-                  className="absolute bottom-3 right-3 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform disabled:opacity-40"
-                >
-                  <TrolleyIcon className="w-7 h-7" />
-                </button>
+            {/* ---------- LEFT: thumbnail rail + main image/video ---------- */}
+            <div className="w-full md:w-[380px] md:shrink-0 flex flex-row md:h-full">
+              {/* Thumbnail rail - the on-chain main/color photo first, then
+                  any extra photos/video the seller uploaded. Only shows up
+                  at all once there's more than one thing to switch between. */}
+              {(qvMediaList.length > 0) && (
+                <div className={`w-14 shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
+                  <button
+                    onClick={() => setQvSelectedMediaIndex(null)}
+                    className={`w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 ${qvSelectedMediaIndex === null ? 'border-lime-400' : 'border-transparent'}`}
+                  >
+                    <img src={getQvDisplayImage()} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                  </button>
+                  {qvMediaList.map((m, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setQvSelectedMediaIndex(i)}
+                      className={`relative w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 ${qvSelectedMediaIndex === i ? 'border-lime-400' : 'border-transparent'}`}
+                    >
+                      {m.type === 'image' ? (
+                        <img src={m.url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                      ) : (
+                        <>
+                          <video src={m.url} className="w-full h-full object-cover" muted />
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <span className="w-4 h-4 rounded-full bg-white/90 flex items-center justify-center text-black text-[8px]">▶</span>
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  ))}
+                </div>
               )}
+
+              {/* Main display - a video if one's selected, otherwise the
+                  photo (color-aware default, or a specific uploaded photo
+                  once one's been picked from the rail). Zoom-on-hover only
+                  makes sense for photos, so it's disabled while a video is
+                  showing. */}
+              <div
+                className={`flex-1 min-w-0 aspect-square md:aspect-auto md:h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
+                onMouseMove={(e) => {
+                  if (qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video') return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 100;
+                  const y = ((e.clientY - rect.top) / rect.height) * 100;
+                  setZoomOrigin({ x, y });
+                  setZoomActive(true);
+                }}
+                onMouseLeave={() => setZoomActive(false)}
+                onTouchStart={(e) => {
+                  if (qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video') return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                  const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                  setZoomOrigin({ x, y });
+                  setZoomActive(true);
+                }}
+                onTouchMove={(e) => {
+                  if (qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video') return;
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = ((touch.clientX - rect.left) / rect.width) * 100;
+                  const y = ((touch.clientY - rect.top) / rect.height) * 100;
+                  setZoomOrigin({ x, y });
+                }}
+                onTouchEnd={() => setZoomActive(false)}
+              >
+                {qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video' ? (
+                  <video
+                    src={qvMediaList[qvSelectedMediaIndex].url}
+                    className="w-full h-full object-cover"
+                    controls
+                    autoPlay
+                    muted
+                  />
+                ) : (
+                  <img
+                    src={qvSelectedMediaIndex !== null ? qvMediaList[qvSelectedMediaIndex].url : getQvDisplayImage()}
+                    alt={quickViewListing.name}
+                    className={`w-full h-full object-cover ${zoomActive ? 'scale-[2.4]' : 'scale-100'} transition-transform duration-100 ease-out cursor-zoom-in`}
+                    style={{ transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
+                  />
+                )}
+                <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
+                {!isOwnQuickViewListing && (
+                  <button
+                    disabled={!canAddQuickViewToCart}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                      setQuickViewId(null);
+                    }}
+                    aria-label="Add to cart"
+                    className="absolute bottom-3 right-3 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform disabled:opacity-40"
+                  >
+                    <TrolleyIcon className="w-7 h-7" />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* ---------- MIDDLE: scrollable info ---------- */}
@@ -3727,7 +3797,7 @@ export default function Ecommerce() {
                             <button
                               key={c}
                               disabled={!anySizeAvailable}
-                              onClick={() => { setPickedColor(c); setPickedSize(''); }}
+                              onClick={() => { setPickedColor(c); setPickedSize(''); setQvSelectedMediaIndex(null); }}
                               className={`flex flex-col items-center gap-1 ${!anySizeAvailable ? 'opacity-30 cursor-not-allowed' : ''}`}
                             >
                               <span className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${pickedColor === c ? 'border-lime-400' : cardBorder}`}>
