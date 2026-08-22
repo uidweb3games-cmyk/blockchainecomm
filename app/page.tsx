@@ -420,6 +420,9 @@ export default function Ecommerce() {
   const [stockMatrix, setStockMatrix] = useState<Record<string, string>>({});
   const [colorImagesInput, setColorImagesInput] = useState<Record<string, string>>({});
   const [newListingMedia, setNewListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [newListingDescription, setNewListingDescription] = useState('');
+  const [newListingSpecs, setNewListingSpecs] = useState<{ label: string; value: string }[]>([]);
+  const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; startListingCount: number } | null>(null);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [editListingMediaLoaded, setEditListingMediaLoaded] = useState(false);
@@ -1165,6 +1168,30 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txConfirmed, pendingListingMedia, address]);
 
+  // Same idea as the effect above, for Specifications + Description
+  // instead of photos/video - a separate off-chain save that also only
+  // needs the one shared cached signature, never a fresh one.
+  useEffect(() => {
+    if (!(txConfirmed && pendingListingDetails && address)) return;
+    (async () => {
+      const result = await refetchListings();
+      const newCount = result.data ? result.data.length : lCount;
+      const newListingId = pendingListingDetails.startListingCount + 1;
+      if (newListingId > newCount) { setPendingListingDetails(null); return; }
+      try {
+        const auth = await ensureChatSessionAuth();
+        if (!auth) { setPendingListingDetails(null); return; }
+        await supabase.functions.invoke('listing-details', {
+          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address, description: pendingListingDetails.description, specs: pendingListingDetails.specs, message: auth.message, signature: auth.signature },
+        });
+      } catch (e) {
+        console.error('Failed to save listing details:', e);
+      }
+      setPendingListingDetails(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed, pendingListingDetails, address]);
+
   // Runs the edit-listing queue one transaction at a time: fires the next
   // queued call only after the previous one actually confirms on-chain,
   // instead of firing every change at once and losing track of all but the
@@ -1892,6 +1919,8 @@ export default function Ecommerce() {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
     setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setColorImagesInput({}); setListMode('simple');
     setNewListingMedia([]);
+    setNewListingDescription('');
+    setNewListingSpecs([]);
   };
 
   const handleListSimple = () => {
@@ -1901,6 +1930,7 @@ export default function Ecommerce() {
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: lCount });
     call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
@@ -1925,6 +1955,7 @@ export default function Ecommerce() {
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: lCount });
     call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
@@ -2967,6 +2998,45 @@ export default function Ecommerce() {
                           </label>
                         </div>
                         <p className={`text-[11px] ${subtleText} mt-1`}>Shown as a gallery on the item's page, alongside the main photo above. One video max for now.</p>
+                      </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-2`}>Specifications (optional)</label>
+                        {newListingSpecs.length > 0 && (
+                          <div className="space-y-2 mb-2">
+                            {newListingSpecs.map((spec, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <input
+                                  type="text" placeholder="e.g. Material" value={spec.label}
+                                  onChange={(e) => setNewListingSpecs((prev) => prev.map((s, idx) => idx === i ? { ...s, label: e.target.value } : s))}
+                                  className={`w-24 shrink-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-xs outline-none focus:border-lime-400 transition-colors`}
+                                />
+                                <input
+                                  type="text" placeholder="e.g. Cotton" value={spec.value}
+                                  onChange={(e) => setNewListingSpecs((prev) => prev.map((s, idx) => idx === i ? { ...s, value: e.target.value } : s))}
+                                  className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-xs outline-none focus:border-lime-400 transition-colors`}
+                                />
+                                <button type="button" onClick={() => setNewListingSpecs((prev) => prev.filter((_, idx) => idx !== i))} className="shrink-0 text-red-500 text-xs px-1">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setNewListingSpecs((prev) => [...prev, { label: '', value: '' }])}
+                          className={`text-xs font-medium px-3 py-1.5 rounded-lg border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}
+                        >
+                          + Add Spec
+                        </button>
+                      </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>Description (optional)</label>
+                        <textarea
+                          value={newListingDescription}
+                          onChange={(e) => setNewListingDescription(e.target.value)}
+                          placeholder="Tell buyers more about this item - fabric feel, fit, what's included, etc."
+                          rows={4}
+                          className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
+                        />
                       </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
