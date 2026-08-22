@@ -420,12 +420,10 @@ export default function Ecommerce() {
   const [stockMatrix, setStockMatrix] = useState<Record<string, string>>({});
   const [colorImagesInput, setColorImagesInput] = useState<Record<string, string>>({});
   const [newListingMedia, setNewListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
-  const [newListingDescription, setNewListingDescription] = useState('');
   const [newListingSpecs, setNewListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; startListingCount: number } | null>(null);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
-  const [editListingDescription, setEditListingDescription] = useState('');
   const [editListingSpecs, setEditListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [editListingDetailsLoaded, setEditListingDetailsLoaded] = useState(false);
   const [savingListingDetails, setSavingListingDetails] = useState(false);
@@ -1938,18 +1936,16 @@ export default function Ecommerce() {
     }).catch(() => setQvMediaList([])).finally(() => setQvMediaLoading(false));
   }, [quickViewId]);
 
-  // Specifications + Description for the item open in Quick View - same
-  // public, no-signature read as the media above.
-  const [qvDescription, setQvDescription] = useState('');
+  // Specifications for the item open in Quick View - same public,
+  // no-signature read as the media above.
   const [qvReviewFilter, setQvReviewFilter] = useState<'all' | 1 | 2 | 3 | 4 | 5>('all');
   const [qvSpecs, setQvSpecs] = useState<{ label: string; value: string }[]>([]);
   useEffect(() => {
-    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); return; }
+    if (!quickViewId) { setQvSpecs([]); return; }
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
     }).then(({ data, error }) => {
       if (error) { console.error('Failed to load listing details:', error); return; }
-      setQvDescription(data?.data?.description || '');
       setQvSpecs(data?.data?.specs || []);
     }).catch(() => {});
   }, [quickViewId]);
@@ -1998,7 +1994,7 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
+    if (newListingSpecs.length > 0) setPendingListingDetails({ description: '', specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
     call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
@@ -2029,7 +2025,7 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
+    if (newListingSpecs.length > 0) setPendingListingDetails({ description: '', specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
     call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
@@ -2060,16 +2056,13 @@ export default function Ecommerce() {
       setEditListingMediaLoaded(true);
     }).catch(() => setEditListingMediaLoaded(true));
 
-    // Same idea for Specifications + Description - separate off-chain data,
-    // separate load.
-    setEditListingDescription('');
+    // Same idea for Specifications - separate off-chain data, separate load.
     setEditListingSpecs([]);
     setEditListingDetailsLoaded(false);
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: listing.id },
     }).then(({ data, error }) => {
       if (error) { console.error('Failed to load listing details:', error); setEditListingDetailsLoaded(true); return; }
-      setEditListingDescription(data?.data?.description || '');
       setEditListingSpecs(data?.data?.specs || []);
       setEditListingDetailsLoaded(true);
     }).catch(() => setEditListingDetailsLoaded(true));
@@ -2152,7 +2145,7 @@ export default function Ecommerce() {
       await supabase.functions.invoke('listing-details', {
         body: {
           action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: editingListingId, sellerAddress: address,
-          description: editListingDescription.trim(),
+          description: '',
           specs: editListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
           message: auth.message, signature: auth.signature,
         },
@@ -3137,16 +3130,6 @@ export default function Ecommerce() {
                           + Add Spec
                         </button>
                       </div>
-                      <div>
-                        <label className={`text-xs ${subtleText} block mb-1`}>Description (optional)</label>
-                        <textarea
-                          value={newListingDescription}
-                          onChange={(e) => setNewListingDescription(e.target.value)}
-                          placeholder="Tell buyers more about this item - fabric feel, fit, what's included, etc."
-                          rows={4}
-                          className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
-                        />
-                      </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Price (in {LIST_CURRENCIES[itemCurrency].symbol})</label><input type="number" step="0.0001" min="0" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="e.g. 0.01" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -3726,16 +3709,6 @@ export default function Ecommerce() {
                   </>
                 )}
               </div>
-              <div>
-                <label className={`text-xs ${subtleText} block mb-1`}>Description</label>
-                <textarea
-                  value={editListingDescription}
-                  onChange={(e) => setEditListingDescription(e.target.value)}
-                  placeholder="Tell buyers more about this item - fabric feel, fit, what's included, etc."
-                  rows={4}
-                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
-                />
-              </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               {editingListingId !== null && !getListingById(editingListingId)?.hasVariants && (
@@ -3902,7 +3875,7 @@ export default function Ecommerce() {
                   even with nothing extra to switch to, so the layout stays
                   consistent instead of jumping around depending on whether
                   a given item happens to have extra media. */}
-              <div className={`w-14 h-full shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
+              <div className={`w-14 h-full shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto [&::-webkit-scrollbar]:hidden ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`} style={{ scrollbarWidth: 'none' }}>
                 <button
                     onClick={() => setQvSelectedMediaIndex(null)}
                     className={`w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 ${qvSelectedMediaIndex === null ? 'border-lime-400' : 'border-transparent'}`}
@@ -4054,7 +4027,7 @@ export default function Ecommerce() {
             </div>
 
             {/* ---------- MIDDLE: scrollable info ---------- */}
-            <div className="flex-1 min-w-0 min-h-0 md:h-full md:overflow-y-auto p-6">
+            <div className="flex-1 min-w-0 min-h-0 md:h-full md:overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
@@ -4169,13 +4142,6 @@ export default function Ecommerce() {
                 </div>
               )}
 
-              {qvDescription.trim() && (
-                <div className="mt-6">
-                  <h4 className="font-semibold text-sm mb-2">Description</h4>
-                  <p className={`text-sm ${subtleText} whitespace-pre-wrap`}>{qvDescription}</p>
-                </div>
-              )}
-
               {(() => {
                 // Reviews are now filtered down to just THIS item, using
                 // the listing_id already stored on each review row (the
@@ -4252,7 +4218,7 @@ export default function Ecommerce() {
             </div>
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
-            <div className={`w-full md:w-[280px] md:shrink-0 min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6`}>
+            <div className={`w-full md:w-[280px] md:shrink-0 min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
               <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity mb-4">
                 <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
                 {quickViewSellerName ? (
