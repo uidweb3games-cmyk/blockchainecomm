@@ -1752,6 +1752,18 @@ export default function Ecommerce() {
     return quickViewListing.imageUrl && quickViewListing.imageUrl.trim() !== '' ? quickViewListing.imageUrl : FALLBACK_IMAGE;
   };
 
+  // Same lookup as getQvDisplayImage, but for any color (not just the
+  // currently picked one) - used to show a real photo swatch per color
+  // option instead of a plain text pill, reusing data the seller already
+  // provided rather than needing anything new.
+  const getQvColorSwatchImage = (color: string): string => {
+    if (!quickViewListing || !qvColorImageData) return quickViewListing?.imageUrl || '';
+    const ci = quickViewListing.colors.indexOf(color);
+    const r = qvColorImageData[ci];
+    const colorImg = r && r.status === 'success' && typeof r.result === 'string' ? r.result : '';
+    return colorImg && colorImg.trim() !== '' ? colorImg : quickViewListing.imageUrl;
+  };
+
   const getQvStock = (color: string, size: string): number => {
     if (!quickViewListing || !quickViewListing.hasVariants || !qvStockData) return 0;
     const ci = quickViewListing.colors.indexOf(color);
@@ -3463,12 +3475,23 @@ export default function Ecommerce() {
               </div>
               {(() => {
                 const summary = getSellerRatingSummary(quickViewListing.seller);
-                return summary ? (
-                  <p className={`text-xs ${subtleText} mb-2 flex items-center gap-1`}>
-                    <span className="text-amber-400">{'★'.repeat(Math.round(summary.average))}{'☆'.repeat(5 - Math.round(summary.average))}</span>
-                    {summary.average.toFixed(1)} ({summary.count} review{summary.count === 1 ? '' : 's'})
+                // "Sold" count is just the number of non-cancelled orders
+                // this listing has - already sitting in data we read for
+                // every other order-related feature, so no new storage
+                // needed to show it here.
+                const soldCount = allOrders.filter((o) => o.listingId === quickViewListing.id && !o.cancelled).length;
+                if (!summary && soldCount === 0) return null;
+                return (
+                  <p className={`text-xs ${subtleText} mb-2 flex items-center gap-1 flex-wrap`}>
+                    {summary && (
+                      <>
+                        <span className="text-amber-400">{'★'.repeat(Math.round(summary.average))}{'☆'.repeat(5 - Math.round(summary.average))}</span>
+                        {summary.average.toFixed(1)} ({summary.count} review{summary.count === 1 ? '' : 's'})
+                      </>
+                    )}
+                    {soldCount > 0 && (<span>{summary ? ' · ' : ''}{soldCount} sold</span>)}
                   </p>
-                ) : null;
+                );
               })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
               <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
@@ -3483,14 +3506,22 @@ export default function Ecommerce() {
                       <div className="flex flex-wrap gap-2">
                         {quickViewListing.colors.map((c) => {
                           const anySizeAvailable = quickViewListing.sizes.some((s) => getQvStock(c, s) > 0);
+                          const swatchImg = getQvColorSwatchImage(c);
                           return (
                             <button
                               key={c}
                               disabled={!anySizeAvailable}
                               onClick={() => { setPickedColor(c); setPickedSize(''); }}
-                              className={`px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${!anySizeAvailable ? 'opacity-30 cursor-not-allowed' : pickedColor === c ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 border-transparent' : `${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
+                              className={`flex flex-col items-center gap-1 ${!anySizeAvailable ? 'opacity-30 cursor-not-allowed' : ''}`}
                             >
-                              {c}
+                              <span className={`w-12 h-12 rounded-lg overflow-hidden border-2 ${pickedColor === c ? 'border-lime-400' : cardBorder}`}>
+                                {swatchImg ? (
+                                  <img src={swatchImg} alt={c} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                                ) : (
+                                  <span className={`w-full h-full flex items-center justify-center text-[9px] ${subtleText} ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>{c.slice(0, 3)}</span>
+                                )}
+                              </span>
+                              <span className={`text-[10px] font-medium ${pickedColor === c ? 'text-lime-500' : subtleText}`}>{c}</span>
                             </button>
                           );
                         })}
