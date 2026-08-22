@@ -3887,7 +3887,7 @@ export default function Ecommerce() {
               phases (video gallery, specs, reviews, seller card) will get
               built into. */}
           <div
-            className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] min-[900px]:h-[85vh] min-[900px]:max-h-[85vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto min-[900px]:overflow-hidden min-[900px]:max-w-5xl flex flex-col min-[900px]:flex-row`}
+            className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] md:h-[85vh] md:max-h-[85vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto md:overflow-hidden md:max-w-5xl flex flex-col md:flex-row`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* ---------- LEFT: thumbnail rail + main image/video ---------- */}
@@ -3896,7 +3896,7 @@ export default function Ecommerce() {
                 and the main display share one guaranteed height between
                 them, instead of each guessing its own - this is what was
                 causing thumbnails to get cut off before. */}
-            <div className="w-full min-[900px]:w-[380px] min-[900px]:shrink-0 aspect-square min-[900px]:aspect-auto min-[900px]:h-full flex flex-row">
+            <div className="w-full md:w-[380px] md:shrink-0 aspect-square md:aspect-auto md:h-full flex flex-row">
               {/* Thumbnail rail - the on-chain main/color photo first, then
                   any extra photos/video the seller uploaded. Always shown,
                   even with nothing extra to switch to, so the layout stays
@@ -4054,7 +4054,7 @@ export default function Ecommerce() {
             </div>
 
             {/* ---------- MIDDLE: scrollable info ---------- */}
-            <div className="flex-1 min-w-0 min-h-0 min-[900px]:h-full min-[900px]:overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+            <div className="flex-1 min-w-0 min-h-0 md:h-full md:overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
@@ -4250,9 +4250,10 @@ export default function Ecommerce() {
                 );
               })()}
             </div>
+            </div>
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
-            <div className={`w-full min-[900px]:w-[280px] min-[900px]:shrink-0 min-h-0 min-[900px]:h-full min-[900px]:overflow-y-auto border-t min-[900px]:border-t-0 min-[900px]:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
+            <div className={`w-full md:w-[280px] md:shrink-0 min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
               <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity mb-4">
                 <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
                 {quickViewSellerName ? (
