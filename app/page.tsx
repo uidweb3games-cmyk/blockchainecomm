@@ -3383,10 +3383,22 @@ export default function Ecommerce() {
       )}
 
       {quickViewListing && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setQuickViewId(null)}>
-          <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} overflow-hidden max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-0 sm:p-4" onClick={() => setQuickViewId(null)}>
+          {/* Three zones: image (left) | scrollable info (middle) | action
+              sidebar (right). Stacks into one flowing column on mobile,
+              where the whole popup scrolls as a single piece - matching how
+              it worked before. From the "md" breakpoint up, it becomes a
+              real 3-column layout and ONLY the middle column scrolls, while
+              the photo and the sidebar stay put - this is the shape future
+              phases (video gallery, specs, reviews, seller card) will get
+              built into. */}
+          <div
+            className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto md:overflow-hidden md:max-w-5xl flex flex-col md:flex-row`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ---------- LEFT: image ---------- */}
             <div
-              className={`w-full aspect-square ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
+              className={`w-full md:w-[380px] md:shrink-0 aspect-square md:aspect-auto md:h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
               onMouseMove={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -3436,7 +3448,9 @@ export default function Ecommerce() {
                 </button>
               )}
             </div>
-            <div className="p-6">
+
+            {/* ---------- MIDDLE: scrollable info ---------- */}
+            <div className="flex-1 min-w-0 md:h-full md:overflow-y-auto p-6">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
@@ -3457,19 +3471,6 @@ export default function Ecommerce() {
                 ) : null;
               })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
-              <div className="flex items-center gap-2 mb-3">
-                <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                  <div className={`w-5 h-5 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[9px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                  {quickViewSellerName ? (
-                    <div>
-                      <p className="text-xs font-semibold underline leading-tight">{quickViewSellerName}</p>
-                      <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                    </div>
-                  ) : (
-                    <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                  )}
-                </Link>
-              </div>
               <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
                 {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
               </span>
@@ -3527,7 +3528,26 @@ export default function Ecommerce() {
                 <p className={`text-xs ${subtleText} mb-5`}>{quickViewListing.simpleStock.toString()} in stock</p>
               )}
 
-              {isOwnQuickViewListing ? (
+              {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) && (
+                <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
+              )}
+            </div>
+
+            {/* ---------- RIGHT: seller + actions sidebar ---------- */}
+            <div className={`w-full md:w-[280px] md:shrink-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6`}>
+              <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity mb-4">
+                <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                {quickViewSellerName ? (
+                  <div>
+                    <p className="text-sm font-semibold underline leading-tight">{quickViewSellerName}</p>
+                    <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                  </div>
+                ) : (
+                  <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                )}
+              </Link>
+
+              {isOwnQuickViewListing && (
                 <div>
                   <p className={`text-xs ${subtleText} text-center mb-3`}>This is your own listing.</p>
                   <button
@@ -3537,9 +3557,7 @@ export default function Ecommerce() {
                     Edit This Listing
                   </button>
                 </div>
-              ) : quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) ? (
-                <p className={`text-xs ${subtleText} text-center`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
