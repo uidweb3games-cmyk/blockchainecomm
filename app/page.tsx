@@ -425,6 +425,10 @@ export default function Ecommerce() {
   const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; startListingCount: number } | null>(null);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [editListingDescription, setEditListingDescription] = useState('');
+  const [editListingSpecs, setEditListingSpecs] = useState<{ label: string; value: string }[]>([]);
+  const [editListingDetailsLoaded, setEditListingDetailsLoaded] = useState(false);
+  const [savingListingDetails, setSavingListingDetails] = useState(false);
   const [editListingMediaLoaded, setEditListingMediaLoaded] = useState(false);
   const [savingListingMedia, setSavingListingMedia] = useState(false);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
@@ -1985,6 +1989,20 @@ export default function Ecommerce() {
       setEditListingMedia(rows);
       setEditListingMediaLoaded(true);
     }).catch(() => setEditListingMediaLoaded(true));
+
+    // Same idea for Specifications + Description - separate off-chain data,
+    // separate load.
+    setEditListingDescription('');
+    setEditListingSpecs([]);
+    setEditListingDetailsLoaded(false);
+    supabase.functions.invoke('listing-details', {
+      body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: listing.id },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load listing details:', error); setEditListingDetailsLoaded(true); return; }
+      setEditListingDescription(data?.data?.description || '');
+      setEditListingSpecs(data?.data?.specs || []);
+      setEditListingDetailsLoaded(true);
+    }).catch(() => setEditListingDetailsLoaded(true));
   };
 
   const editingListing = editingListingId ? getListingById(editingListingId) : null;
@@ -2055,6 +2073,26 @@ export default function Ecommerce() {
     setSavingListingMedia(false);
   };
 
+  const saveListingDetailsEdits = async () => {
+    if (!editingListingId || !address || !editListingDetailsLoaded) return;
+    setSavingListingDetails(true);
+    try {
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
+      await supabase.functions.invoke('listing-details', {
+        body: {
+          action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: editingListingId, sellerAddress: address,
+          description: editListingDescription.trim(),
+          specs: editListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
+          message: auth.message, signature: auth.signature,
+        },
+      });
+    } catch (e) {
+      console.error('Failed to save listing details:', e);
+    }
+    setSavingListingDetails(false);
+  };
+
   const saveEditListing = () => {
     if (!editingListingId) return;
     if (!editName.trim() || !editPrice || Number(editPrice) <= 0) { alert('Please enter a valid name and price'); return; }
@@ -2098,6 +2136,7 @@ export default function Ecommerce() {
     // Photos/video are off-chain, so they save right away, regardless of
     // whether anything on-chain also changed.
     saveListingMediaEdits();
+    saveListingDetailsEdits();
 
     if (queue.length === 0) { setEditingListingId(null); return; }
     setEditQueueTotal(queue.length);
@@ -3582,6 +3621,51 @@ export default function Ecommerce() {
                   </>
                 )}
               </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-2`}>Specifications</label>
+                {!editListingDetailsLoaded ? (
+                  <p className={`text-xs ${subtleText}`}>Loading...</p>
+                ) : (
+                  <>
+                    {editListingSpecs.length > 0 && (
+                      <div className="space-y-2 mb-2">
+                        {editListingSpecs.map((spec, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <input
+                              type="text" placeholder="e.g. Material" value={spec.label}
+                              onChange={(e) => setEditListingSpecs((prev) => prev.map((s, idx) => idx === i ? { ...s, label: e.target.value } : s))}
+                              className={`w-24 shrink-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-xs outline-none focus:border-lime-400 transition-colors`}
+                            />
+                            <input
+                              type="text" placeholder="e.g. Cotton" value={spec.value}
+                              onChange={(e) => setEditListingSpecs((prev) => prev.map((s, idx) => idx === i ? { ...s, value: e.target.value } : s))}
+                              className={`flex-1 min-w-0 ${inputBg} border ${cardBorder} rounded-lg px-2 py-1.5 text-xs outline-none focus:border-lime-400 transition-colors`}
+                            />
+                            <button type="button" onClick={() => setEditListingSpecs((prev) => prev.filter((_, idx) => idx !== i))} className="shrink-0 text-red-500 text-xs px-1">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setEditListingSpecs((prev) => [...prev, { label: '', value: '' }])}
+                      className={`text-xs font-medium px-3 py-1.5 rounded-lg border ${cardBorder} ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}
+                    >
+                      + Add Spec
+                    </button>
+                  </>
+                )}
+              </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Description</label>
+                <textarea
+                  value={editListingDescription}
+                  onChange={(e) => setEditListingDescription(e.target.value)}
+                  placeholder="Tell buyers more about this item - fabric feel, fit, what's included, etc."
+                  rows={4}
+                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
+                />
+              </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               {editingListingId !== null && !getListingById(editingListingId)?.hasVariants && (
@@ -3644,10 +3728,10 @@ export default function Ecommerce() {
                 </>
               )}
             </div>
-            <button onClick={saveEditListing} disabled={isPending || editQueueRunning || savingListingMedia} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+            <button onClick={saveEditListing} disabled={isPending || editQueueRunning || savingListingMedia || savingListingDetails} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
               {editQueueRunning
                 ? `Confirm in wallet... (${editQueueTotal - editQueue.length + 1}/${editQueueTotal})`
-                : isPending ? 'Confirm in wallet...' : savingListingMedia ? 'Saving photos...' : 'Save Changes'}
+                : isPending ? 'Confirm in wallet...' : (savingListingMedia || savingListingDetails) ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>
