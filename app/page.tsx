@@ -306,6 +306,23 @@ async function uploadImageToCloudinary(file: File): Promise<string> {
   return data.secure_url as string;
 }
 
+// Same idea as the image upload, but hits Cloudinary's video endpoint
+// instead - the account/preset already set up for images works for video
+// too, since Cloudinary tells them apart by which URL you upload to, not
+// by any extra setup.
+async function uploadVideoToCloudinary(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await res.json();
+  if (!data.secure_url) throw new Error('Upload failed');
+  return data.secure_url as string;
+}
+
 const AVATAR_COLORS = ['from-lime-400 to-emerald-500', 'from-sky-400 to-blue-500', 'from-fuchsia-400 to-purple-500', 'from-amber-400 to-orange-500', 'from-rose-400 to-pink-500'];
 function avatarGradient(addr: string) {
   const sum = addr.slice(2, 10).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -402,6 +419,8 @@ export default function Ecommerce() {
   const [sizesInput, setSizesInput] = useState('');
   const [stockMatrix, setStockMatrix] = useState<Record<string, string>>({});
   const [colorImagesInput, setColorImagesInput] = useState<Record<string, string>>({});
+  const [newListingMedia, setNewListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editImage, setEditImage] = useState('');
@@ -1116,6 +1135,33 @@ export default function Ecommerce() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txConfirmed, pendingActionNotify]);
 
+  // Once a new listing's on-chain transaction confirms, we finally know its
+  // real listing ID (the count right after it was created) - only then can
+  // the extra photos/video be saved against that ID. This asks for one
+  // extra free signature (no gas) right after the listing itself confirms,
+  // to prove the wallet saving this media is the same one that just
+  // created the listing.
+  useEffect(() => {
+    if (!(txConfirmed && pendingListingMedia && address)) return;
+    (async () => {
+      const result = await refetchListings();
+      const newCount = result.data ? result.data.length : lCount;
+      const newListingId = pendingListingMedia.startListingCount + 1;
+      if (newListingId > newCount) { setPendingListingMedia(null); return; }
+      try {
+        const message = `OpenSpace listing media | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | listing:${newListingId} | seller:${address.toLowerCase()}`;
+        const signature = await signMessageAsync({ message });
+        await supabase.functions.invoke('listing-media', {
+          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address, media: pendingListingMedia.media, message, signature },
+        });
+      } catch (e) {
+        console.error('Failed to save listing media:', e);
+      }
+      setPendingListingMedia(null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txConfirmed, pendingListingMedia, address]);
+
   // Runs the edit-listing queue one transaction at a time: fires the next
   // queued call only after the previous one actually confirms on-chain,
   // instead of firing every change at once and losing track of all but the
@@ -1800,6 +1846,7 @@ export default function Ecommerce() {
   const resetListForm = () => {
     setItemName(''); setItemImage(''); setItemPrice(''); setItemCurrency('BNB'); setItemCategory(CATEGORIES[0]);
     setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setColorImagesInput({}); setListMode('simple');
+    setNewListingMedia([]);
   };
 
   const handleListSimple = () => {
@@ -1808,6 +1855,7 @@ export default function Ecommerce() {
     }
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
+    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
     call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
@@ -1831,6 +1879,7 @@ export default function Ecommerce() {
     const colorImagesArr = effectiveColors.map((c) => (colorImagesInput[c] || '').trim());
     const priceInWei = parseEther(itemPrice);
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
+    if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: lCount });
     call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
@@ -2775,6 +2824,67 @@ export default function Ecommerce() {
                           <img src={itemImage} alt="Preview" className="mt-2 w-16 h-16 rounded-lg object-cover border border-zinc-300/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         )}
                         <p className={`text-[11px] ${subtleText} mt-1`}>Leave blank to use a placeholder image, or upload a photo, or paste a link</p>
+                      </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-2`}>Additional Photos &amp; Video (optional)</label>
+                        {newListingMedia.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {newListingMedia.map((m, i) => (
+                              <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-zinc-300/30">
+                                {m.type === 'image' ? (
+                                  <img src={m.url} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <video src={m.url} className="w-full h-full object-cover" muted />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setNewListingMedia((prev) => prev.filter((_, idx) => idx !== i))}
+                                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white text-[9px] flex items-center justify-center"
+                                >✕</button>
+                                {m.type === 'video' && (
+                                  <span className="absolute bottom-0.5 left-0.5 text-[8px] bg-black/60 text-white px-1 rounded">VIDEO</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            {uploadingKey === 'new-media-photo' ? 'Uploading...' : '📷 Add Photo'}
+                            <input
+                              type="file" accept="image/*" className="hidden" disabled={uploadingKey === 'new-media-photo'}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingKey('new-media-photo');
+                                try {
+                                  const url = await uploadImageToCloudinary(file);
+                                  setNewListingMedia((prev) => [...prev, { url, type: 'image' }]);
+                                } catch (err) { alert('Photo upload failed. Please try again.'); }
+                                setUploadingKey(null);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                          <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                            {uploadingKey === 'new-media-video' ? 'Uploading...' : '🎥 Add Video'}
+                            <input
+                              type="file" accept="video/*" className="hidden" disabled={uploadingKey === 'new-media-video' || newListingMedia.some((m) => m.type === 'video')}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingKey('new-media-video');
+                                try {
+                                  const url = await uploadVideoToCloudinary(file);
+                                  setNewListingMedia((prev) => [...prev, { url, type: 'video' }]);
+                                } catch (err) { alert('Video upload failed. Please try again.'); }
+                                setUploadingKey(null);
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <p className={`text-[11px] ${subtleText} mt-1`}>Shown as a gallery on the item's page, alongside the main photo above. One video max for now.</p>
                       </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
