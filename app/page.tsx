@@ -2906,7 +2906,7 @@ export default function Ecommerce() {
                                 {m.type === 'image' ? (
                                   <img src={m.url} alt="" className="w-full h-full object-cover" />
                                 ) : (
-                                  <video src={m.url} className="w-full h-full object-cover" muted />
+                                  <video src={m.url} className="w-full h-full object-cover" muted playsInline />
                                 )}
                                 <button
                                   type="button"
@@ -3449,7 +3449,7 @@ export default function Ecommerce() {
                             {m.type === 'image' ? (
                               <img src={m.url} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              <video src={m.url} className="w-full h-full object-cover" muted />
+                              <video src={m.url} className="w-full h-full object-cover" muted playsInline />
                             )}
                             <button
                               type="button"
@@ -3684,7 +3684,7 @@ export default function Ecommerce() {
                         <img src={m.url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
                       ) : (
                         <>
-                          <video src={m.url} className="w-full h-full object-cover" muted />
+                          <video src={m.url} className="w-full h-full object-cover" muted playsInline />
                           <span className="absolute inset-0 flex items-center justify-center bg-black/30">
                             <span className="w-4 h-4 rounded-full bg-white/90 flex items-center justify-center text-black text-[8px]">▶</span>
                           </span>
@@ -3744,6 +3744,7 @@ export default function Ecommerce() {
                     controls
                     autoPlay
                     muted
+                    playsInline
                   />
                 ) : (
                   <img
