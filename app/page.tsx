@@ -4250,7 +4250,6 @@ export default function Ecommerce() {
                 );
               })()}
             </div>
-            </div>
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
             <div className={`w-full md:w-[280px] md:shrink-0 min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
