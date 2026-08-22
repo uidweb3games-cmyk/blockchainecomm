@@ -4054,7 +4054,7 @@ export default function Ecommerce() {
             </div>
 
             {/* ---------- MIDDLE: scrollable info ---------- */}
-            <div className="flex-1 min-w-0 min-h-0 md:h-full md:overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+            <div className="w-full md:flex-1 min-w-0 md:min-h-0 md:h-full md:overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-lime-400 shadow-[0_0_8px_rgba(163,230,53,0.8)]" />
@@ -4252,7 +4252,7 @@ export default function Ecommerce() {
             </div>
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
-            <div className={`w-full md:w-[280px] md:shrink-0 min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
+            <div className={`w-full md:w-[280px] md:shrink-0 md:min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
               <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity mb-4">
                 <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
                 {quickViewSellerName ? (
