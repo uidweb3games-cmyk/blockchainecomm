@@ -1137,10 +1137,10 @@ export default function Ecommerce() {
 
   // Once a new listing's on-chain transaction confirms, we finally know its
   // real listing ID (the count right after it was created) - only then can
-  // the extra photos/video be saved against that ID. This asks for one
-  // extra free signature (no gas) right after the listing itself confirms,
-  // to prove the wallet saving this media is the same one that just
-  // created the listing.
+  // the extra photos/video be saved against that ID. Reuses the same
+  // cached "session" signature already used for chat/reviews/evidence -
+  // so this asks for a brand new signature only the very first time a
+  // wallet ever uses ANY of these features, never again after that.
   useEffect(() => {
     if (!(txConfirmed && pendingListingMedia && address)) return;
     (async () => {
@@ -1149,10 +1149,10 @@ export default function Ecommerce() {
       const newListingId = pendingListingMedia.startListingCount + 1;
       if (newListingId > newCount) { setPendingListingMedia(null); return; }
       try {
-        const message = `OpenSpace listing media | contract:${MARKETPLACE_ADDRESS.toLowerCase()} | listing:${newListingId} | seller:${address.toLowerCase()}`;
-        const signature = await signMessageAsync({ message });
+        const auth = await ensureChatSessionAuth();
+        if (!auth) { setPendingListingMedia(null); return; }
         await supabase.functions.invoke('listing-media', {
-          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address, media: pendingListingMedia.media, message, signature },
+          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address, media: pendingListingMedia.media, message: auth.message, signature: auth.signature },
         });
       } catch (e) {
         console.error('Failed to save listing media:', e);
