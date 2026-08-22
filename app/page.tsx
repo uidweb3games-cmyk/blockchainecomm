@@ -421,6 +421,9 @@ export default function Ecommerce() {
   const [colorImagesInput, setColorImagesInput] = useState<Record<string, string>>({});
   const [newListingMedia, setNewListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
+  const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [editListingMediaLoaded, setEditListingMediaLoaded] = useState(false);
+  const [savingListingMedia, setSavingListingMedia] = useState(false);
   const [editingListingId, setEditingListingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editImage, setEditImage] = useState('');
@@ -1896,6 +1899,19 @@ export default function Ecommerce() {
     setEditQueue([]);
     setEditQueueTotal(0);
     setEditQueueRunning(false);
+    // Extra photos/video live in Supabase, not on-chain, so they're loaded
+    // separately here with a plain public read - no signature needed just
+    // to view them, same as everyone browsing the shop can already see them.
+    setEditListingMedia([]);
+    setEditListingMediaLoaded(false);
+    supabase.functions.invoke('listing-media', {
+      body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: listing.id },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load listing media:', error); setEditListingMediaLoaded(true); return; }
+      const rows = (data?.data || []).map((r: any) => ({ url: r.url, type: r.media_type }));
+      setEditListingMedia(rows);
+      setEditListingMediaLoaded(true);
+    }).catch(() => setEditListingMediaLoaded(true));
   };
 
   const editingListing = editingListingId ? getListingById(editingListingId) : null;
@@ -1946,6 +1962,26 @@ export default function Ecommerce() {
     return r && r.status === 'success' && typeof r.result === 'string' ? r.result : '';
   };
 
+  // Photos/video live in Supabase, not on-chain, so saving them never needs
+  // a blockchain transaction - just the one shared cached signature (only
+  // asked for the very first time a wallet ever uses any Supabase-backed
+  // feature). Runs independently of whatever on-chain price/stock changes
+  // might also be queued.
+  const saveListingMediaEdits = async () => {
+    if (!editingListingId || !address || !editListingMediaLoaded) return;
+    setSavingListingMedia(true);
+    try {
+      const auth = await ensureChatSessionAuth();
+      if (!auth) return;
+      await supabase.functions.invoke('listing-media', {
+        body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: editingListingId, sellerAddress: address, media: editListingMedia, message: auth.message, signature: auth.signature },
+      });
+    } catch (e) {
+      console.error('Failed to save listing media:', e);
+    }
+    setSavingListingMedia(false);
+  };
+
   const saveEditListing = () => {
     if (!editingListingId) return;
     if (!editName.trim() || !editPrice || Number(editPrice) <= 0) { alert('Please enter a valid name and price'); return; }
@@ -1985,6 +2021,10 @@ export default function Ecommerce() {
         queue.push({ functionName: 'updateColorImage', args: [BigInt(editingListingId), c, draft.trim()] });
       });
     }
+
+    // Photos/video are off-chain, so they save right away, regardless of
+    // whether anything on-chain also changed.
+    saveListingMediaEdits();
 
     if (queue.length === 0) { setEditingListingId(null); return; }
     setEditQueueTotal(queue.length);
@@ -3364,6 +3404,72 @@ export default function Ecommerce() {
                   <img src={editImage} alt="Preview" className="mt-2 w-16 h-16 rounded-lg object-cover border border-zinc-300/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 )}
               </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-2`}>Additional Photos &amp; Video</label>
+                {!editListingMediaLoaded ? (
+                  <p className={`text-xs ${subtleText}`}>Loading...</p>
+                ) : (
+                  <>
+                    {editListingMedia.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {editListingMedia.map((m, i) => (
+                          <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-zinc-300/30">
+                            {m.type === 'image' ? (
+                              <img src={m.url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <video src={m.url} className="w-full h-full object-cover" muted />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEditListingMedia((prev) => prev.filter((_, idx) => idx !== i))}
+                              className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/60 text-white text-[9px] flex items-center justify-center"
+                            >✕</button>
+                            {m.type === 'video' && (
+                              <span className="absolute bottom-0.5 left-0.5 text-[8px] bg-black/60 text-white px-1 rounded">VIDEO</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                        {uploadingKey === 'edit-media-photo' ? 'Uploading...' : '📷 Add Photo'}
+                        <input
+                          type="file" accept="image/*" className="hidden" disabled={uploadingKey === 'edit-media-photo'}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingKey('edit-media-photo');
+                            try {
+                              const url = await uploadImageToCloudinary(file);
+                              setEditListingMedia((prev) => [...prev, { url, type: 'image' }]);
+                            } catch (err) { alert('Photo upload failed. Please try again.'); }
+                            setUploadingKey(null);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border ${cardBorder} text-xs font-medium cursor-pointer ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                        {uploadingKey === 'edit-media-video' ? 'Uploading...' : '🎥 Add Video'}
+                        <input
+                          type="file" accept="video/*" className="hidden" disabled={uploadingKey === 'edit-media-video' || editListingMedia.some((m) => m.type === 'video')}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploadingKey('edit-media-video');
+                            try {
+                              const url = await uploadVideoToCloudinary(file);
+                              setEditListingMedia((prev) => [...prev, { url, type: 'video' }]);
+                            } catch (err) { alert('Video upload failed. Please try again.'); }
+                            setUploadingKey(null);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               {editingListingId !== null && !getListingById(editingListingId)?.hasVariants && (
@@ -3426,10 +3532,10 @@ export default function Ecommerce() {
                 </>
               )}
             </div>
-            <button onClick={saveEditListing} disabled={isPending || editQueueRunning} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+            <button onClick={saveEditListing} disabled={isPending || editQueueRunning || savingListingMedia} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
               {editQueueRunning
                 ? `Confirm in wallet... (${editQueueTotal - editQueue.length + 1}/${editQueueTotal})`
-                : isPending ? 'Confirm in wallet...' : 'Save Changes'}
+                : isPending ? 'Confirm in wallet...' : savingListingMedia ? 'Saving photos...' : 'Save Changes'}
             </button>
           </div>
         </div>
