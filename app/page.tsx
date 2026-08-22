@@ -1850,18 +1850,32 @@ export default function Ecommerce() {
   // photo. Resets to the on-chain main image whenever a different item is
   // opened.
   const [qvMediaList, setQvMediaList] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
+  const [qvMediaLoading, setQvMediaLoading] = useState(false);
   const [qvSelectedMediaIndex, setQvSelectedMediaIndex] = useState<number | null>(null);
   useEffect(() => {
     setQvSelectedMediaIndex(null);
-    if (!quickViewId) { setQvMediaList([]); return; }
+    if (!quickViewId) { setQvMediaList([]); setQvMediaLoading(false); return; }
+    setQvMediaList([]);
+    setQvMediaLoading(true);
     supabase.functions.invoke('listing-media', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
     }).then(({ data, error }) => {
       if (error) { console.error('Failed to load listing media:', error); setQvMediaList([]); return; }
       const rows = (data?.data || []).map((r: any) => ({ url: r.url, type: r.media_type }));
       setQvMediaList(rows);
-    }).catch(() => setQvMediaList([]));
+    }).catch(() => setQvMediaList([])).finally(() => setQvMediaLoading(false));
   }, [quickViewId]);
+
+  // Steps forward/back through the full gallery (the default photo, plus
+  // every uploaded photo/video, in the same order the thumbnail rail shows
+  // them) - powers the prev/next arrows on the main display, wrapping
+  // around at each end.
+  const qvGalleryStep = (direction: 1 | -1) => {
+    const total = 1 + qvMediaList.length;
+    const currentPos = qvSelectedMediaIndex === null ? 0 : qvSelectedMediaIndex + 1;
+    const nextPos = (currentPos + direction + total) % total;
+    setQvSelectedMediaIndex(nextPos === 0 ? null : nextPos - 1);
+  };
 
   // ---------- LISTING FORM ----------
   const resetListForm = () => {
@@ -3643,12 +3657,17 @@ export default function Ecommerce() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* ---------- LEFT: thumbnail rail + main image/video ---------- */}
-            <div className="w-full md:w-[380px] md:shrink-0 flex flex-row md:h-full">
+            {/* aspect-square lives on this outer row (mobile only - md+
+                uses the popup's own fixed height instead), so both the rail
+                and the main display share one guaranteed height between
+                them, instead of each guessing its own - this is what was
+                causing thumbnails to get cut off before. */}
+            <div className="w-full md:w-[380px] md:shrink-0 aspect-square md:aspect-auto md:h-full flex flex-row">
               {/* Thumbnail rail - the on-chain main/color photo first, then
                   any extra photos/video the seller uploaded. Only shows up
                   at all once there's more than one thing to switch between. */}
-              {(qvMediaList.length > 0) && (
-                <div className={`w-14 shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
+              {(qvMediaList.length > 0 || qvMediaLoading) && (
+                <div className={`w-14 h-full shrink-0 flex flex-col gap-1.5 p-1.5 overflow-y-auto ${darkMode ? 'bg-white/5' : 'bg-zinc-100'}`}>
                   <button
                     onClick={() => setQvSelectedMediaIndex(null)}
                     className={`w-11 h-11 rounded-lg overflow-hidden border-2 shrink-0 ${qvSelectedMediaIndex === null ? 'border-lime-400' : 'border-transparent'}`}
@@ -3673,6 +3692,9 @@ export default function Ecommerce() {
                       )}
                     </button>
                   ))}
+                  {qvMediaLoading && (
+                    <div className="w-11 h-11 rounded-lg shrink-0 bg-black/10 animate-pulse" />
+                  )}
                 </div>
               )}
 
@@ -3680,9 +3702,12 @@ export default function Ecommerce() {
                   photo (color-aware default, or a specific uploaded photo
                   once one's been picked from the rail). Zoom-on-hover only
                   makes sense for photos, so it's disabled while a video is
-                  showing. */}
+                  showing. object-contain (not object-cover) so the whole
+                  product is always visible here, never cropped - the rail
+                  thumbnails stay cropped-to-square since they're just
+                  small previews. */}
               <div
-                className={`flex-1 min-w-0 aspect-square md:aspect-auto md:h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
+                className={`flex-1 min-w-0 h-full ${darkMode ? 'bg-white/5' : 'bg-zinc-100'} relative overflow-hidden`}
                 onMouseMove={(e) => {
                   if (qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video') return;
                   const rect = e.currentTarget.getBoundingClientRect();
@@ -3715,7 +3740,7 @@ export default function Ecommerce() {
                 {qvSelectedMediaIndex !== null && qvMediaList[qvSelectedMediaIndex]?.type === 'video' ? (
                   <video
                     src={qvMediaList[qvSelectedMediaIndex].url}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                     controls
                     autoPlay
                     muted
@@ -3724,10 +3749,24 @@ export default function Ecommerce() {
                   <img
                     src={qvSelectedMediaIndex !== null ? qvMediaList[qvSelectedMediaIndex].url : getQvDisplayImage()}
                     alt={quickViewListing.name}
-                    className={`w-full h-full object-cover ${zoomActive ? 'scale-[2.4]' : 'scale-100'} transition-transform duration-100 ease-out cursor-zoom-in`}
+                    className={`w-full h-full object-contain ${zoomActive ? 'scale-[2.4]' : 'scale-100'} transition-transform duration-100 ease-out cursor-zoom-in`}
                     style={{ transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` }}
                     onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }}
                   />
+                )}
+                {(qvMediaList.length > 0) && (
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); qvGalleryStep(-1); }}
+                      aria-label="Previous photo"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm hover:bg-black/70"
+                    >‹</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); qvGalleryStep(1); }}
+                      aria-label="Next photo"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm hover:bg-black/70"
+                    >›</button>
+                  </>
                 )}
                 <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
                 {!isOwnQuickViewListing && (
