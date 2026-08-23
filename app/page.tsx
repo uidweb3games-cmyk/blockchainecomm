@@ -20,7 +20,6 @@ const BRAND_NAME = 'OpenSpace';
 const ONBOARDING_SEEN_KEY = 'openspace_onboarding_seen';
 const ACTIVE_TAB_KEY = 'openspace_active_tab';
 const DARK_MODE_KEY = 'openspace_dark_mode';
-const PURCHASES_OPEN_KEY = 'openspace_purchases_open';
 const CART_STORAGE_KEY = 'openspace_cart';
 const CART_CURRENCY_STORAGE_KEY = 'openspace_cart_currency';
 const NO_VARIANT = '';
@@ -401,7 +400,8 @@ function OpenSpaceBrand({ imgClassName, textClassName }: { imgClassName?: string
 export default function Ecommerce() {
   const [mounted, setMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [activeTab, setActiveTab] = useState<'shop' | 'sell' | 'analytics'>('shop');
+  const [activeTab, setActiveTab] = useState<'shop' | 'orders' | 'sell' | 'analytics'>('shop');
+  const [ordersSubTab, setOrdersSubTab] = useState<'active' | 'history'>('active');
   const [sellSubTab, setSellSubTab] = useState<'list' | 'fulfill' | 'ads' | 'history'>('list');
   const [hiddenOrderIds, setHiddenOrderIds] = useState<Set<number>>(new Set());
   const [historyFromDate, setHistoryFromDate] = useState('');
@@ -486,8 +486,6 @@ export default function Ecommerce() {
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [purchasesOpen, setPurchasesOpen] = useState(false);
-  const [messagesOpen, setMessagesOpen] = useState(false);
   const [sellerProfile, setSellerProfile] = useState<{ shopName: string; bio: string } | null>(null);
   const [sellerRegOpen, setSellerRegOpen] = useState(false);
   const [shopNameInput, setShopNameInput] = useState('');
@@ -655,11 +653,8 @@ export default function Ecommerce() {
     const seen = localStorage.getItem(ONBOARDING_SEEN_KEY);
     if (!seen) { setHelpModalOpen(true); localStorage.setItem(ONBOARDING_SEEN_KEY, 'true'); }
     const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
-    if (savedTab === 'shop' || savedTab === 'sell' || savedTab === 'analytics') {
+    if (savedTab === 'shop' || savedTab === 'orders' || savedTab === 'sell' || savedTab === 'analytics') {
       setActiveTab(savedTab);
-    }
-    if (localStorage.getItem(PURCHASES_OPEN_KEY) === 'true') {
-      setPurchasesOpen(true);
     }
 
     // Restore whatever was in the cart from a previous visit - shoppers who
@@ -718,13 +713,6 @@ export default function Ecommerce() {
     if (!mounted) return;
     localStorage.setItem(ACTIVE_TAB_KEY, activeTab);
   }, [activeTab, mounted]);
-
-  // Same idea for the My Purchases view specifically, since it's a common
-  // place people refresh from while tracking a shipment.
-  useEffect(() => {
-    if (!mounted) return;
-    localStorage.setItem(PURCHASES_OPEN_KEY, purchasesOpen ? 'true' : 'false');
-  }, [purchasesOpen, mounted]);
 
   // Persist the cart itself so closing the tab/site never silently empties
   // it - only an explicit "Clear Cart" or completing checkout should do that.
@@ -2833,14 +2821,8 @@ export default function Ecommerce() {
                               <span className="text-sm font-bold text-amber-500">{myPoints}</span>
                               <span className={`text-xs ${subtleText}`}>points</span>
                             </div>
-                            <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); Array.from(new Set(myPurchases.map((o) => getListingById(o.listingId)?.seller).filter((s): s is string => !!s))).forEach((s) => loadSellerReviews(s)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                              📦 My Purchases {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
-                            </button>
-                            <button onClick={() => { setMessagesOpen(true); setMenuOpen(false); }} className={`relative w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
-                              💬 Messages
-                              {allOrders.some((o) => { const l = getListingById(o.listingId); return (o.buyer.toLowerCase() === address?.toLowerCase() || (l && l.seller.toLowerCase() === address?.toLowerCase())) && hasUnreadChat(o.id); }) && (
-                                <span className="absolute top-2.5 right-3 w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
-                              )}
+                            <button onClick={() => { setActiveTab('orders'); setMenuOpen(false); }} className={`relative w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'orders' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
+                              📦 My Orders {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
                             </button>
                             <button onClick={() => { setReferralModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🎁 Refer &amp; Earn</button>
                             <button onClick={() => { setSettingsOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Wallet Settings</button>
@@ -2989,6 +2971,63 @@ export default function Ecommerce() {
                 )}
               </div>
             </div>
+          </>
+        ) : activeTab === 'orders' ? (
+          <>
+            <div className="mb-8 sm:mb-10">
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-3">
+                My<br /><span className="bg-gradient-to-r from-lime-500 via-emerald-400 to-sky-500 bg-clip-text text-transparent">Orders.</span>
+              </h2>
+              <p className={`${subtleText} text-base sm:text-lg`}>Everything you've bought, in one place.</p>
+            </div>
+
+            {!isConnected ? (
+              <div className={`${cardBg} rounded-3xl p-8 border ${cardBorder} text-center max-w-md`}>
+                <p className={`${subtleText} mb-4`}>Connect your wallet to see your orders.</p>
+                <button onClick={openWalletChoice} className="px-6 py-2.5 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity">Login</button>
+              </div>
+            ) : (
+              <>
+                <div className={`flex rounded-xl border ${cardBorder} p-1 mb-8 max-w-xs`}>
+                  <button
+                    onClick={() => setOrdersSubTab('active')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${ordersSubTab === 'active' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}
+                  >
+                    Active Orders {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
+                  </button>
+                  <button
+                    onClick={() => { setOrdersSubTab('history'); Array.from(new Set(myPurchases.map((o) => getListingById(o.listingId)?.seller).filter((s): s is string => !!s))).forEach((s) => loadSellerReviews(s)); }}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${ordersSubTab === 'history' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : subtleText}`}
+                  >
+                    Order History
+                  </button>
+                </div>
+
+                {ordersSubTab === 'active' ? (
+                  (() => {
+                    const active = myPurchases.filter((o) => !o.released && !o.cancelled);
+                    return active.length === 0 ? (
+                      <p className={subtleText}>Nothing in progress right now.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {active.map((order) => renderOrderCard(order, 'buyer'))}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const history = myPurchases.filter((o) => o.released || o.cancelled);
+                    return history.length === 0 ? (
+                      <p className={subtleText}>No completed or cancelled orders yet.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {history.map((order) => renderOrderCard(order, 'buyer'))}
+                      </div>
+                    );
+                  })()
+                )}
+              </>
+            )}
           </>
         ) : activeTab === 'sell' ? (
           <>
@@ -3835,89 +3874,6 @@ export default function Ecommerce() {
           </div>
         </div>
       )}
-
-      {purchasesOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setPurchasesOpen(false)}>
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4"><h3 className="font-semibold text-lg">My Purchases</h3><button onClick={() => setPurchasesOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button></div>
-            {myPurchases.length === 0 ? (<p className={`${subtleText} text-sm py-8 text-center`}>You haven't bought anything yet.</p>) : (<div className="space-y-4">{myPurchases.map((order) => renderOrderCard(order, 'buyer'))}</div>)}
-          </div>
-        </div>
-      )}
-
-      {messagesOpen && (() => {
-        // Every order this wallet is part of (as buyer or seller) is a
-        // potential conversation - exactly the same set the background
-        // unread-checker already tracks, just displayed as a list here
-        // instead of individual buttons scattered across order cards.
-        const myConversations = allOrders
-          .filter((o) => {
-            const listing = getListingById(o.listingId);
-            return o.buyer.toLowerCase() === address?.toLowerCase() || (listing && listing.seller.toLowerCase() === address?.toLowerCase());
-          })
-          .map((o) => {
-            const listing = getListingById(o.listingId);
-            const isBuyerHere = o.buyer.toLowerCase() === address?.toLowerCase();
-            const otherParty = isBuyerHere ? (listing?.seller || '') : o.buyer;
-            return { order: o, listing, isBuyerHere, otherParty, lastActivity: chatActivityMap[o.id] || null, unread: hasUnreadChat(o.id) };
-          })
-          .filter((c) => c.listing)
-          .sort((a, b) => {
-            // Conversations with real activity float to the top, most
-            // recent first; ones with no messages yet sit below, most
-            // recently purchased first.
-            if (a.lastActivity && b.lastActivity) return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
-            if (a.lastActivity) return -1;
-            if (b.lastActivity) return 1;
-            return Number(b.order.purchaseTime) - Number(a.order.purchaseTime);
-          });
-        return (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setMessagesOpen(false)}>
-            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] flex flex-col`} onClick={(e) => e.stopPropagation()}>
-              <div className={`px-6 py-4 border-b ${cardBorder} flex items-center justify-between`}>
-                <h3 className="font-semibold text-lg">Messages</h3>
-                <button onClick={() => setMessagesOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {myConversations.length === 0 ? (
-                  <p className={`${subtleText} text-sm py-12 text-center px-6`}>No conversations yet - buy or sell something to start one.</p>
-                ) : (
-                  myConversations.map(({ order, listing, isBuyerHere, otherParty, lastActivity, unread }) => {
-                    const displayImage = listing!.imageUrl && listing!.imageUrl.trim() !== '' ? listing!.imageUrl : FALLBACK_IMAGE;
-                    return (
-                      <button
-                        key={order.id}
-                        onClick={() => {
-                          setMessagesOpen(false);
-                          setChatUnavailable(null);
-                          setChatModalOrderId(order.id);
-                          loadChatMessages(order.id, chatMessagesMap[order.id] !== undefined);
-                          markChatSeen(order.id);
-                        }}
-                        className={`w-full flex items-center gap-3 px-6 py-3 border-b ${cardBorder} last:border-b-0 text-left ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
-                      >
-                        <img src={displayImage} alt={listing!.name} className="w-12 h-12 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-medium truncate">{listing!.name}</p>
-                            {unread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
-                          </div>
-                          <p className={`text-xs ${subtleText} truncate`}>
-                            {isBuyerHere ? 'Seller' : 'Buyer'}: {otherParty.slice(0, 6)}...{otherParty.slice(-4)}
-                          </p>
-                        </div>
-                        <span className={`text-[10px] ${subtleText} shrink-0`}>
-                          {lastActivity ? new Date(lastActivity).toLocaleDateString() : 'No messages yet'}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {referralModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setReferralModalOpen(false)}>
