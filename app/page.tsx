@@ -4240,16 +4240,29 @@ export default function Ecommerce() {
                 );
               })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-2xl font-mono bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+              {qvOriginalPrice !== null && qvOriginalPrice > Number(quickViewListing.price) / 1e18 ? (
+                <div className={`mb-4 rounded-2xl overflow-hidden border ${cardBorder}`}>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-400/20">
+                    <span className="text-base leading-none">🛒</span>
+                    <span className="text-sm font-bold text-amber-600">Special Offer</span>
+                  </div>
+                  <div className={`px-4 py-3 ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-2xl font-mono bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+                        {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500">
+                        {Math.round((1 - (Number(quickViewListing.price) / 1e18) / qvOriginalPrice) * 100)}% OFF
+                      </span>
+                    </div>
+                    <span className={`text-sm line-through ${subtleText}`}>{qvOriginalPrice} {currencySymbol(quickViewListing.paymentToken)}</span>
+                  </div>
+                </div>
+              ) : (
+                <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
                   {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
                 </span>
-                {qvOriginalPrice !== null && qvOriginalPrice > Number(quickViewListing.price) / 1e18 && (
-                  <span className={`text-sm line-through ${subtleText}`}>
-                    {qvOriginalPrice} {currencySymbol(quickViewListing.paymentToken)}
-                  </span>
-                )}
-              </div>
+              )}
 
               {quickViewListing.hasVariants ? (
                 <>
