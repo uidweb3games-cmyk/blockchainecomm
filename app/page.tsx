@@ -423,11 +423,15 @@ export default function Ecommerce() {
   const [newListingMedia, setNewListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [newListingSpecs, setNewListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [newListingDescription, setNewListingDescription] = useState('');
-  const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; startListingCount: number } | null>(null);
+  const [newListingShippingNote, setNewListingShippingNote] = useState('');
+  const [newListingOriginalPrice, setNewListingOriginalPrice] = useState('');
+  const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; shippingNote: string; originalPrice: string; startListingCount: number } | null>(null);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [editListingSpecs, setEditListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [editListingDescription, setEditListingDescription] = useState('');
+  const [editListingShippingNote, setEditListingShippingNote] = useState('');
+  const [editListingOriginalPrice, setEditListingOriginalPrice] = useState('');
   const [editListingDetailsLoaded, setEditListingDetailsLoaded] = useState(false);
   const [savingListingDetails, setSavingListingDetails] = useState(false);
   const [editListingMediaLoaded, setEditListingMediaLoaded] = useState(false);
@@ -487,10 +491,11 @@ export default function Ecommerce() {
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sellerProfile, setSellerProfile] = useState<{ shopName: string; bio: string } | null>(null);
+  const [sellerProfile, setSellerProfile] = useState<{ shopName: string; bio: string; location: string } | null>(null);
   const [sellerRegOpen, setSellerRegOpen] = useState(false);
   const [shopNameInput, setShopNameInput] = useState('');
   const [shopBioInput, setShopBioInput] = useState('');
+  const [shopLocationInput, setShopLocationInput] = useState('');
   const [quickViewId, setQuickViewId] = useState<number | null>(null);
   const [zoomActive, setZoomActive] = useState(false);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
@@ -745,7 +750,7 @@ export default function Ecommerce() {
     }).then(({ data, error }) => {
       if (error) { console.error('Failed to load seller profile:', error); return; }
       const row = data?.data;
-      setSellerProfile(row ? { shopName: row.shop_name, bio: row.bio || '' } : null);
+      setSellerProfile(row ? { shopName: row.shop_name, bio: row.bio || '', location: row.location || '' } : null);
     });
   }, [address]);
 
@@ -754,17 +759,17 @@ export default function Ecommerce() {
     const auth = await ensureChatSessionAuth();
     if (!auth) return;
     const { error } = await supabase.functions.invoke('seller-profiles', {
-      body: { action: 'saveProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, shopName: shopNameInput.trim(), bio: shopBioInput.trim(), message: auth.message, signature: auth.signature },
+      body: { action: 'saveProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: address, shopName: shopNameInput.trim(), bio: shopBioInput.trim(), location: shopLocationInput.trim(), message: auth.message, signature: auth.signature },
     });
     if (error) { console.error('Failed to save seller profile:', error); alert('Failed to save shop profile. Please try again.'); return; }
-    const profile = { shopName: shopNameInput.trim(), bio: shopBioInput.trim() };
+    const profile = { shopName: shopNameInput.trim(), bio: shopBioInput.trim(), location: shopLocationInput.trim() };
     setSellerProfile(profile);
     setSellerRegOpen(false);
     setSellerOnboardOpen(false);
     setSellerOnboardStep(1);
     setSellerOnboardAgreed(false);
   };
-  const openSellerReg = () => { setShopNameInput(sellerProfile?.shopName ?? ''); setShopBioInput(sellerProfile?.bio ?? ''); setSellerRegOpen(true); };
+  const openSellerReg = () => { setShopNameInput(sellerProfile?.shopName ?? ''); setShopBioInput(sellerProfile?.bio ?? ''); setShopLocationInput(sellerProfile?.location ?? ''); setSellerRegOpen(true); };
   const openWalletChoice = () => { resetEmailFlow(); setOauthErr(''); setWalletChoiceOpen(true); };
 
   const handleDisconnect = async () => {
@@ -1186,7 +1191,12 @@ export default function Ecommerce() {
         const auth = await ensureChatSessionAuth();
         if (!auth) { setPendingListingDetails(null); return; }
         await supabase.functions.invoke('listing-details', {
-          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address, description: pendingListingDetails.description, specs: pendingListingDetails.specs, message: auth.message, signature: auth.signature },
+          body: {
+            action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address,
+            description: pendingListingDetails.description, specs: pendingListingDetails.specs,
+            shippingNote: pendingListingDetails.shippingNote, originalPrice: pendingListingDetails.originalPrice,
+            message: auth.message, signature: auth.signature,
+          },
         });
       } catch (e) {
         console.error('Failed to save listing details:', e);
@@ -1919,20 +1929,23 @@ export default function Ecommerce() {
   // public lookup, no signature needed, works for any visitor.
   const [quickViewSellerName, setQuickViewSellerName] = useState<string | null>(null);
   const [quickViewSellerJoined, setQuickViewSellerJoined] = useState<string | null>(null);
+  const [quickViewSellerLocation, setQuickViewSellerLocation] = useState<string | null>(null);
   const [sellerCardOpen, setSellerCardOpen] = useState(false);
   const [sellerCardPos, setSellerCardPos] = useState<{ top: number; right: number } | null>(null);
   const sellerInfoButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const sellerAddr = quickViewListing?.seller;
     setSellerCardOpen(false);
-    if (!sellerAddr) { setQuickViewSellerName(null); setQuickViewSellerJoined(null); return; }
+    if (!sellerAddr) { setQuickViewSellerName(null); setQuickViewSellerJoined(null); setQuickViewSellerLocation(null); return; }
     setQuickViewSellerName(null);
     setQuickViewSellerJoined(null);
+    setQuickViewSellerLocation(null);
     supabase.functions.invoke('seller-profiles', {
       body: { action: 'getProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: sellerAddr },
     }).then(({ data, error }) => {
       if (!error && data?.data?.shop_name) setQuickViewSellerName(data.data.shop_name);
       if (!error && data?.data?.created_at) setQuickViewSellerJoined(data.data.created_at);
+      if (!error && data?.data?.location) setQuickViewSellerLocation(data.data.location);
     }).catch(() => {});
     loadSellerReviews(sellerAddr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2002,6 +2015,8 @@ export default function Ecommerce() {
     setItemStock(''); setColorsInput(''); setSizesInput(''); setStockMatrix({}); setColorImagesInput({}); setListMode('simple');
     setNewListingMedia([]);
     setNewListingDescription('');
+    setNewListingShippingNote('');
+    setNewListingOriginalPrice('');
     setNewListingSpecs([]);
   };
 
@@ -2022,7 +2037,15 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingOriginalPrice.trim()) {
+      setPendingListingDetails({
+        description: newListingDescription.trim(),
+        specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
+        shippingNote: newListingShippingNote.trim(),
+        originalPrice: newListingOriginalPrice.trim(),
+        startListingCount: currentCount,
+      });
+    }
     call('listItem', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, BigInt(itemStock)], listingFeeWei);
     resetListForm();
   };
@@ -2053,7 +2076,15 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0) setPendingListingDetails({ description: newListingDescription.trim(), specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()), startListingCount: currentCount });
+    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingOriginalPrice.trim()) {
+      setPendingListingDetails({
+        description: newListingDescription.trim(),
+        specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
+        shippingNote: newListingShippingNote.trim(),
+        originalPrice: newListingOriginalPrice.trim(),
+        startListingCount: currentCount,
+      });
+    }
     call('listItemWithVariants', [itemName.trim(), itemImage.trim(), itemCategory, priceInWei, tokenAddress, effectiveColors, effectiveSizes, matrix, colorImagesArr], listingFeeWei);
     resetListForm();
   };
@@ -2088,6 +2119,8 @@ export default function Ecommerce() {
     // separate load.
     setEditListingDescription('');
     setEditListingSpecs([]);
+    setEditListingShippingNote('');
+    setEditListingOriginalPrice('');
     setEditListingDetailsLoaded(false);
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: listing.id },
@@ -2095,6 +2128,8 @@ export default function Ecommerce() {
       if (error) { console.error('Failed to load listing details:', error); setEditListingDetailsLoaded(true); return; }
       setEditListingDescription(data?.data?.description || '');
       setEditListingSpecs(data?.data?.specs || []);
+      setEditListingShippingNote(data?.data?.shipping_note || '');
+      setEditListingOriginalPrice(data?.data?.original_price !== null && data?.data?.original_price !== undefined ? String(data.data.original_price) : '');
       setEditListingDetailsLoaded(true);
     }).catch(() => setEditListingDetailsLoaded(true));
   };
@@ -2178,6 +2213,8 @@ export default function Ecommerce() {
           action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: editingListingId, sellerAddress: address,
           description: editListingDescription.trim(),
           specs: editListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
+          shippingNote: editListingShippingNote.trim(),
+          originalPrice: editListingOriginalPrice.trim(),
           message: auth.message, signature: auth.signature,
         },
       });
@@ -3238,6 +3275,28 @@ export default function Ecommerce() {
                           className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
                         />
                       </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>Shipping (optional)</label>
+                        <input
+                          type="text"
+                          value={newListingShippingNote}
+                          onChange={(e) => setNewListingShippingNote(e.target.value)}
+                          placeholder="e.g. Fast: 3-5 business days"
+                          className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                        />
+                        <p className={`text-[11px] ${subtleText} mt-1`}>Shown to buyers as a simple note - not a calculated rate.</p>
+                      </div>
+                      <div>
+                        <label className={`text-xs ${subtleText} block mb-1`}>Original price (optional)</label>
+                        <input
+                          type="number" step="0.0001" min="0"
+                          value={newListingOriginalPrice}
+                          onChange={(e) => setNewListingOriginalPrice(e.target.value)}
+                          placeholder="e.g. 0.02"
+                          className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                        />
+                        <p className={`text-[11px] ${subtleText} mt-1`}>Shown crossed out next to your real price, to highlight a discount. Purely for display - has no effect on what buyers actually pay.</p>
+                      </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Price (in {LIST_CURRENCIES[itemCurrency].symbol})</label><input type="number" step="0.0001" min="0" value={itemPrice} onChange={(e) => setItemPrice(e.target.value)} placeholder="e.g. 0.01" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -3630,6 +3689,7 @@ export default function Ecommerce() {
                   <div className="space-y-3">
                     <div><label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label><input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
                     <div><label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label><textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell? What makes your shop worth checking out?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} /></div>
+                    <div><label className={`text-xs ${subtleText} block mb-1`}>Location (optional)</label><input type="text" value={shopLocationInput} onChange={(e) => setShopLocationInput(e.target.value)} placeholder="e.g. Lagos, Nigeria" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
                   </div>
                 </div>
               )}
@@ -3690,6 +3750,7 @@ export default function Ecommerce() {
             <div className="space-y-3 mb-5">
               <div><label className={`text-xs ${subtleText} block mb-1`}>Shop Name</label><input type="text" value={shopNameInput} onChange={(e) => setShopNameInput(e.target.value)} placeholder="e.g. Kemi's Closet" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Short Bio (optional)</label><textarea value={shopBioInput} onChange={(e) => setShopBioInput(e.target.value)} placeholder="What do you sell?" rows={3} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`} /></div>
+              <div><label className={`text-xs ${subtleText} block mb-1`}>Location (optional)</label><input type="text" value={shopLocationInput} onChange={(e) => setShopLocationInput(e.target.value)} placeholder="e.g. Lagos, Nigeria" className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
             </div>
             <button onClick={saveSellerProfile} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all">Save Changes</button>
           </div>
@@ -3826,6 +3887,27 @@ export default function Ecommerce() {
                   rows={4}
                   className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors resize-none`}
                 />
+              </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Shipping (optional)</label>
+                <input
+                  type="text"
+                  value={editListingShippingNote}
+                  onChange={(e) => setEditListingShippingNote(e.target.value)}
+                  placeholder="e.g. Fast: 3-5 business days"
+                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                />
+              </div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Original price (optional)</label>
+                <input
+                  type="number" step="0.0001" min="0"
+                  value={editListingOriginalPrice}
+                  onChange={(e) => setEditListingOriginalPrice(e.target.value)}
+                  placeholder="e.g. 0.02"
+                  className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
+                />
+                <p className={`text-[11px] ${subtleText} mt-1`}>Shown crossed out next to your real price. Purely for display - has no effect on what buyers actually pay.</p>
               </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -4373,7 +4455,7 @@ export default function Ecommerce() {
                         click. */}
                     <div className="fixed inset-0 z-[80]" onClick={() => setSellerCardOpen(false)} />
                     <div
-                      className={`fixed ${cardBg} border ${cardBorder} rounded-2xl shadow-xl w-[calc(100vw-2rem)] max-w-lg p-5 z-[81]`}
+                      className={`fixed ${cardBg} ${text} border ${cardBorder} rounded-2xl shadow-xl w-[calc(100vw-2rem)] max-w-lg p-5 z-[81]`}
                       style={{ top: sellerCardPos?.top ?? 0, right: sellerCardPos?.right ?? 0 }}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -4382,9 +4464,11 @@ export default function Ecommerce() {
                         <div>
                           <p className="text-sm font-bold mb-3">Store Info</p>
                           <div className="space-y-2 text-xs">
-                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Name:</span><span className="font-medium">{quickViewSellerName || '—'}</span></div>
-                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Wallet:</span><span className="font-mono">{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</span></div>
-                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Open since:</span><span className="font-medium">{quickViewSellerJoined ? new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Name:</span><span className={`font-medium ${text}`}>{quickViewSellerName || '—'}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Wallet:</span><span className={`font-mono ${text}`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Open since:</span><span className={`font-medium ${text}`}>{quickViewSellerJoined ? new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Location:</span><span className={`font-medium ${text}`}>{quickViewSellerLocation || '—'}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Store no.:</span><span className={`font-medium ${text}`}>{allListings.filter((l) => l.seller.toLowerCase() === quickViewListing.seller.toLowerCase()).length}</span></div>
                           </div>
                         </div>
                         <div>
@@ -4396,7 +4480,7 @@ export default function Ecommerce() {
                               {categories.map((c) => (
                                 <div key={c.label} className="flex items-center justify-between gap-3 text-xs">
                                   <span className={subtleText}>{c.label}</span>
-                                  <span className="font-semibold shrink-0">{c.value.toFixed(1)} <span className="text-amber-400">★</span></span>
+                                  <span className={`font-semibold shrink-0 ${text}`}>{c.value.toFixed(1)} <span className="text-amber-400">★</span></span>
                                 </div>
                               ))}
                             </div>
