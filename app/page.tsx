@@ -518,10 +518,12 @@ export default function Ecommerce() {
   const [evidenceModalOrderId, setEvidenceModalOrderId] = useState<number | null>(null);
   const [evidenceMap, setEvidenceMap] = useState<Record<number, EvidenceItem[]>>({});
   const [reviewModalOrderId, setReviewModalOrderId] = useState<number | null>(null);
-  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewRatingItem, setReviewRatingItem] = useState(0);
+  const [reviewRatingCommunication, setReviewRatingCommunication] = useState(0);
+  const [reviewRatingShipping, setReviewRatingShipping] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
-  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; listingId: number; rating: number; reviewText: string | null; buyerAddress: string; createdAt: string; helpfulCount: number }[]>>({});
+  const [sellerReviewsMap, setSellerReviewsMap] = useState<Record<string, { orderId: number; listingId: number; rating: number; ratingItem: number | null; ratingCommunication: number | null; ratingShipping: number | null; reviewText: string | null; buyerAddress: string; createdAt: string; helpfulCount: number }[]>>({});
   const [helpfulVotedIds, setHelpfulVotedIds] = useState<Set<number>>(new Set());
   const [evidenceNote, setEvidenceNote] = useState('');
   const [evidenceImageUrl, setEvidenceImageUrl] = useState('');
@@ -1490,7 +1492,9 @@ export default function Ecommerce() {
     });
     if (error) { console.error('Failed to load reviews:', error); return; }
     const rows = (data?.data || []).map((r: any) => ({
-      orderId: r.order_id, listingId: r.listing_id, rating: r.rating, reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at, helpfulCount: r.helpful_count || 0,
+      orderId: r.order_id, listingId: r.listing_id, rating: r.rating,
+      ratingItem: r.rating_item ?? null, ratingCommunication: r.rating_communication ?? null, ratingShipping: r.rating_shipping ?? null,
+      reviewText: r.review_text, buyerAddress: r.buyer_address, createdAt: r.created_at, helpfulCount: r.helpful_count || 0,
     }));
     setSellerReviewsMap((prev) => ({ ...prev, [sellerAddress.toLowerCase()]: rows }));
     if (data?.votedOrderIds) setHelpfulVotedIds((prev) => new Set([...prev, ...data.votedOrderIds]));
@@ -1527,24 +1531,37 @@ export default function Ecommerce() {
 
   const openReviewModal = (orderId: number, sellerAddress: string) => {
     const existing = (sellerReviewsMap[sellerAddress.toLowerCase()] || []).find((r) => r.orderId === orderId);
-    setReviewRating(existing?.rating || 0);
+    // Older reviews (submitted before the 3-part breakdown existed) won't
+    // have these three saved separately - fall back to their old single
+    // overall rating for all three fields in that case, so re-editing an
+    // old review still starts from something sensible instead of blank.
+    setReviewRatingItem(existing?.ratingItem ?? existing?.rating ?? 0);
+    setReviewRatingCommunication(existing?.ratingCommunication ?? existing?.rating ?? 0);
+    setReviewRatingShipping(existing?.ratingShipping ?? existing?.rating ?? 0);
     setReviewText(existing?.reviewText || '');
     setReviewModalOrderId(orderId);
   };
 
   const submitReview = async (orderId: number, listingId: number, sellerAddress: string) => {
-    if (!address || reviewRating < 1) { alert('Please pick a star rating.'); return; }
+    if (!address || reviewRatingItem < 1 || reviewRatingCommunication < 1 || reviewRatingShipping < 1) {
+      alert('Please pick a star rating for all three categories.'); return;
+    }
     setReviewSubmitting(true);
     try {
       const auth = await ensureChatSessionAuth();
       if (!auth) return;
       const { error } = await supabase.functions.invoke('reviews', {
-        body: { action: 'submitReview', contractAddress: MARKETPLACE_ADDRESS, orderId, listingId, sellerAddress, rating: reviewRating, reviewText: reviewText.trim(), walletAddress: address, message: auth.message, signature: auth.signature },
+        body: {
+          action: 'submitReview', contractAddress: MARKETPLACE_ADDRESS, orderId, listingId, sellerAddress,
+          ratingItem: reviewRatingItem, ratingCommunication: reviewRatingCommunication, ratingShipping: reviewRatingShipping,
+          reviewText: reviewText.trim(), walletAddress: address, message: auth.message, signature: auth.signature,
+        },
       });
       if (error) { console.error('Failed to submit review:', error); alert('Failed to submit review. Please try again.'); return; }
       await loadSellerReviews(sellerAddress);
+      const overallForNotification = Math.round((reviewRatingItem + reviewRatingCommunication + reviewRatingShipping) / 3);
       const reviewedListing = getListingById(listingId);
-      sendNotification(sellerAddress, '⭐ New review', `You got a ${reviewRating}-star review${reviewedListing ? ` on "${reviewedListing.name}"` : ''}.`, orderId);
+      sendNotification(sellerAddress, '⭐ New review', `You got a ${overallForNotification}-star review${reviewedListing ? ` on "${reviewedListing.name}"` : ''}.`, orderId);
       setReviewModalOrderId(null);
     } catch (e) {
       console.error('Failed to submit review:', e);
@@ -4476,11 +4493,22 @@ export default function Ecommerce() {
                 <button onClick={() => setReviewModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
               </div>
               <p className={`text-xs ${subtleText} mb-4`}>{listing.name}</p>
-              <div className="flex justify-center gap-1 mb-4">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button key={star} onClick={() => setReviewRating(star)} className="text-3xl leading-none transition-transform hover:scale-110">
-                    {star <= reviewRating ? <span className="text-amber-400">★</span> : <span className={subtleText}>☆</span>}
-                  </button>
+              <div className="space-y-4 mb-4">
+                {[
+                  { label: 'Item as Described', value: reviewRatingItem, setValue: setReviewRatingItem },
+                  { label: 'Communication', value: reviewRatingCommunication, setValue: setReviewRatingCommunication },
+                  { label: 'Shipping Speed', value: reviewRatingShipping, setValue: setReviewRatingShipping },
+                ].map(({ label, value, setValue }) => (
+                  <div key={label}>
+                    <p className={`text-xs font-medium ${subtleText} mb-1`}>{label}</p>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button key={star} onClick={() => setValue(star)} className="text-2xl leading-none transition-transform hover:scale-110">
+                          {star <= value ? <span className="text-amber-400">★</span> : <span className={subtleText}>☆</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
               <textarea
@@ -4490,7 +4518,7 @@ export default function Ecommerce() {
                 rows={3}
                 className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors text-sm resize-none mb-4`}
               />
-              <button onClick={() => submitReview(order.id, listing.id, listing.seller)} disabled={reviewSubmitting || reviewRating < 1} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
+              <button onClick={() => submitReview(order.id, listing.id, listing.seller)} disabled={reviewSubmitting || reviewRatingItem < 1 || reviewRatingCommunication < 1 || reviewRatingShipping < 1} className="w-full py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-all disabled:opacity-50">
                 {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
               </button>
             </div>
