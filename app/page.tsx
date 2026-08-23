@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useId } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useAccount, useDisconnect, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, useBalance, useSendTransaction, useSignMessage } from 'wagmi';
 import { usePrivy, useLoginWithOAuth, useLoginWithEmail, useLoginWithPasskey, useConnectWallet, useWallets, useCreateWallet } from '@privy-io/react-auth';
@@ -4351,16 +4352,18 @@ export default function Ecommerce() {
                     { label: 'Communication', value: avg('ratingCommunication') },
                     { label: 'Shipping Speed', value: avg('ratingShipping') },
                   ];
-                  return (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setSellerCardOpen(false)} />
-                      <div className={`absolute left-0 top-full mt-2 w-72 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg z-50 p-4`}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
-                            <p className={`text-[10px] ${subtleText} font-mono`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                  return createPortal(
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4" onClick={() => setSellerCardOpen(false)}>
+                      <div className={`${cardBg} border ${cardBorder} rounded-3xl shadow-lg w-full max-w-xs p-5`} onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
+                              <p className={`text-[10px] ${subtleText} font-mono`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                            </div>
                           </div>
+                          <button onClick={() => setSellerCardOpen(false)} className={`w-7 h-7 rounded-full shrink-0 ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
                         </div>
                         <p className={`text-[11px] ${subtleText} mb-3`}>
                           {quickViewSellerJoined ? `Member since ${new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : 'Member since unknown'}
@@ -4381,7 +4384,8 @@ export default function Ecommerce() {
                           )}
                         </div>
                       </div>
-                    </>
+                    </div>,
+                    document.body
                   );
                 })()}
               </div>
