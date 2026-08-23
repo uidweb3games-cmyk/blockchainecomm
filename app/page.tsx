@@ -4118,27 +4118,6 @@ export default function Ecommerce() {
                   </>
                 )}
                 <button onClick={() => setQuickViewId(null)} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-sm">✕</button>
-                {!isOwnQuickViewListing && (
-                  <button
-                    disabled={!canAddQuickViewToCart}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Adds one cart line per unit of quantity chosen - the
-                      // cart, checkout math, and the on-chain buyMultiple
-                      // call already treat every line as one unit each, so
-                      // this reuses all of that exactly as-is with no
-                      // changes needed anywhere else in checkout.
-                      for (let i = 0; i < qvQuantity; i++) {
-                        addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
-                      }
-                      setQuickViewId(null);
-                    }}
-                    aria-label="Add to cart"
-                    className="absolute bottom-3 right-3 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform disabled:opacity-40"
-                  >
-                    <TrolleyIcon className="w-7 h-7" />
-                  </button>
-                )}
               </div>
             </div>
 
@@ -4241,7 +4220,7 @@ export default function Ecommerce() {
               )}
 
               {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) && (
-                <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
+                <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above to continue.' : 'Select a size above to continue.'}</p>
               )}
 
               {canAddQuickViewToCart && (
@@ -4261,6 +4240,26 @@ export default function Ecommerce() {
                     >+</button>
                   </div>
                   <p className={`text-[11px] ${subtleText} mt-1`}>Max {qvMaxStock} in stock</p>
+                  {!isOwnQuickViewListing && (
+                    <button
+                      onClick={() => {
+                        // Adds one cart line per unit of quantity chosen -
+                        // the cart, checkout math, and the on-chain
+                        // buyMultiple call already treat every line as one
+                        // unit each, so this reuses all of that exactly
+                        // as-is with no changes needed anywhere else in
+                        // checkout.
+                        for (let i = 0; i < qvQuantity; i++) {
+                          addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                        }
+                        setQuickViewId(null);
+                      }}
+                      aria-label="Add to cart"
+                      className="mt-4 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
+                    >
+                      <TrolleyIcon className="w-7 h-7" />
+                    </button>
+                  )}
                 </div>
               )}
 
