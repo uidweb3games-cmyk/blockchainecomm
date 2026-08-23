@@ -2024,11 +2024,25 @@ export default function Ecommerce() {
     setNewListingSpecs([]);
   };
 
+  // Applies a seller's discount percentage to their entered "original"
+  // price, returning the real price that actually gets listed on-chain -
+  // shared by both the create-listing flow and editing an existing
+  // listing's price, so the math only lives in one place. Returns the
+  // price unchanged if no valid discount is set.
+  const computeDiscountedPrice = (rawPrice: string, discountPercent: string): string => {
+    const discount = Number(discountPercent);
+    if (!discountPercent.trim() || !discount || discount <= 0 || discount >= 100) return rawPrice;
+    const discounted = Number(rawPrice) * (1 - discount / 100);
+    // Fixed to 8 decimal places to avoid floating-point artifacts (like
+    // 0.029999999999999998) that parseEther would otherwise choke on.
+    return discounted.toFixed(8);
+  };
+
   const handleListSimple = async () => {
     if (!itemName.trim() || !itemPrice || Number(itemPrice) <= 0 || !itemStock || Number(itemStock) <= 0) {
       alert('Please enter a valid name, price, and stock quantity'); return;
     }
-    const priceInWei = parseEther(itemPrice);
+    const priceInWei = parseEther(computeDiscountedPrice(itemPrice, newListingDiscountPercent));
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
     // Get a fresh, live listing count right before submitting - this reads
     // the actual on-chain counter itself, not the app's cached list of
@@ -2071,7 +2085,7 @@ export default function Ecommerce() {
       }
     }
     const colorImagesArr = effectiveColors.map((c) => (colorImagesInput[c] || '').trim());
-    const priceInWei = parseEther(itemPrice);
+    const priceInWei = parseEther(computeDiscountedPrice(itemPrice, newListingDiscountPercent));
     const tokenAddress = LIST_CURRENCIES[itemCurrency].address;
     // Same freshness fix as handleListSimple above.
     let currentCount = lCount;
@@ -2133,7 +2147,18 @@ export default function Ecommerce() {
       setEditListingDescription(data?.data?.description || '');
       setEditListingSpecs(data?.data?.specs || []);
       setEditListingShippingNote(data?.data?.shipping_note || '');
-      setEditListingDiscountPercent(data?.data?.discount_percent !== null && data?.data?.discount_percent !== undefined ? String(data.data.discount_percent) : '');
+      const loadedDiscount = data?.data?.discount_percent !== null && data?.data?.discount_percent !== undefined ? String(data.data.discount_percent) : '';
+      setEditListingDiscountPercent(loadedDiscount);
+      // The on-chain price is always the FINAL discounted price - if this
+      // listing already has a discount applied, work backward to show the
+      // seller their original (pre-discount) price in the Price field
+      // instead of the already-discounted one, so re-saving without
+      // touching anything doesn't accidentally apply the discount twice.
+      const discountNum = Number(loadedDiscount);
+      if (loadedDiscount.trim() && discountNum > 0 && discountNum < 100) {
+        const original = (Number(listing.price) / 1e18) / (1 - discountNum / 100);
+        setEditPrice(original.toFixed(8));
+      }
       setEditListingDetailsLoaded(true);
     }).catch(() => setEditListingDetailsLoaded(true));
   };
@@ -2234,7 +2259,7 @@ export default function Ecommerce() {
     const listing = getListingById(editingListingId);
     if (!listing) return;
 
-    const priceInWei = parseEther(editPrice);
+    const priceInWei = parseEther(computeDiscountedPrice(editPrice, editListingDiscountPercent));
     const queue: { functionName: string; args: any[] }[] = [];
 
     // Only queue the core details update if something in it actually
@@ -3299,7 +3324,12 @@ export default function Ecommerce() {
                           placeholder="e.g. 20"
                           className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                         />
-                        <p className={`text-[11px] ${subtleText} mt-1`}>Example: Price is 10 and you enter 20 here → buyers see "10, 20% OFF" with "12.5" crossed out. This box is ONLY the percentage - never your price.</p>
+                        <p className={`text-[11px] ${subtleText} mt-1`}>This REDUCES what you actually get paid. The Price field above is your original price - this percentage gets taken off it automatically when you list.</p>
+                        {newListingDiscountPercent.trim() && Number(newListingDiscountPercent) > 0 && Number(newListingDiscountPercent) < 100 && itemPrice && Number(itemPrice) > 0 && (
+                          <p className="text-xs font-semibold text-lime-600 mt-1">
+                            You'll actually receive: {computeDiscountedPrice(itemPrice, newListingDiscountPercent)} {LIST_CURRENCIES[itemCurrency].symbol} per sale
+                          </p>
+                        )}
                       </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
@@ -3911,7 +3941,12 @@ export default function Ecommerce() {
                   placeholder="e.g. 20"
                   className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                 />
-                <p className={`text-[11px] ${subtleText} mt-1`}>Example: Price is 10 and you enter 20 here → buyers see "10, 20% OFF" with "12.5" crossed out. This box is ONLY the percentage - never your price.</p>
+                <p className={`text-[11px] ${subtleText} mt-1`}>This REDUCES what you actually get paid. The Price field above is your original price - this percentage gets taken off it automatically when you save.</p>
+                {editListingDiscountPercent.trim() && Number(editListingDiscountPercent) > 0 && Number(editListingDiscountPercent) < 100 && editPrice && Number(editPrice) > 0 && editingListingId && (
+                  <p className="text-xs font-semibold text-lime-600 mt-1">
+                    You'll actually receive: {computeDiscountedPrice(editPrice, editListingDiscountPercent)} {currencySymbol(getListingById(editingListingId)?.paymentToken || ZERO_ADDRESS)} per sale
+                  </p>
+                )}
               </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
