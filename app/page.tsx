@@ -496,6 +496,7 @@ export default function Ecommerce() {
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
+  const [qvQuantity, setQvQuantity] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
@@ -1903,7 +1904,16 @@ export default function Ecommerce() {
     setPickedColor('');
     setPickedSize('');
     setQvReviewFilter('all');
+    setQvQuantity(1);
   }, [quickViewId]);
+
+  // Stock differs per color/size combo, so the quantity picker resets back
+  // to 1 whenever the buyer changes which combo they're looking at -
+  // otherwise a quantity chosen for a high-stock combo could carry over
+  // and exceed what's actually available for a different one.
+  useEffect(() => {
+    setQvQuantity(1);
+  }, [pickedColor, pickedSize]);
 
   // Shop name for whoever is selling the item currently open in Quick View -
   // public lookup, no signature needed, works for any visitor.
@@ -2535,6 +2545,16 @@ export default function Ecommerce() {
   const qvHasSizes = quickViewListing ? quickViewListing.sizes.some((s) => s !== NO_VARIANT) : false;
   const qvColorReady = !qvHasColors || !!pickedColor;
   const qvSizeReady = !qvHasSizes || !!pickedSize;
+  // Real, accurate stock ceiling for whichever combo is currently selected -
+  // used to cap the quantity stepper so a buyer can never select more than
+  // what's actually available.
+  const qvMaxStock = !quickViewListing
+    ? 0
+    : !quickViewListing.hasVariants
+      ? Number(quickViewListing.simpleStock)
+      : (qvColorReady && qvSizeReady)
+        ? getQvStock(qvHasColors ? pickedColor : NO_VARIANT, qvHasSizes ? pickedSize : NO_VARIANT)
+        : 0;
   const canAddQuickViewToCart = quickViewListing && (!quickViewListing.hasVariants || (qvColorReady && qvSizeReady && getQvStock(qvHasColors ? pickedColor : NO_VARIANT, qvHasSizes ? pickedSize : NO_VARIANT) > 0));
   const isOwnQuickViewListing = quickViewListing && address && quickViewListing.seller.toLowerCase() === address.toLowerCase();
 
@@ -4103,7 +4123,14 @@ export default function Ecommerce() {
                     disabled={!canAddQuickViewToCart}
                     onClick={(e) => {
                       e.stopPropagation();
-                      addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                      // Adds one cart line per unit of quantity chosen - the
+                      // cart, checkout math, and the on-chain buyMultiple
+                      // call already treat every line as one unit each, so
+                      // this reuses all of that exactly as-is with no
+                      // changes needed anywhere else in checkout.
+                      for (let i = 0; i < qvQuantity; i++) {
+                        addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                      }
                       setQuickViewId(null);
                     }}
                     aria-label="Add to cart"
@@ -4215,6 +4242,26 @@ export default function Ecommerce() {
 
               {quickViewListing.hasVariants && !(qvColorReady && qvSizeReady) && (
                 <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above, then tap the cart icon on the photo to add it.' : 'Select a size above, then tap the cart icon on the photo to add it.'}</p>
+              )}
+
+              {canAddQuickViewToCart && (
+                <div className="mb-5">
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${subtleText} mb-2`}>Quantity</p>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setQvQuantity((q) => Math.max(1, q - 1))}
+                      disabled={qvQuantity <= 1}
+                      className={`w-8 h-8 rounded-full border ${cardBorder} flex items-center justify-center text-lg disabled:opacity-30 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}
+                    >−</button>
+                    <span className="w-8 text-center font-medium">{qvQuantity}</span>
+                    <button
+                      onClick={() => setQvQuantity((q) => Math.min(qvMaxStock, q + 1))}
+                      disabled={qvQuantity >= qvMaxStock}
+                      className={`w-8 h-8 rounded-full border ${cardBorder} flex items-center justify-center text-lg disabled:opacity-30 ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}
+                    >+</button>
+                  </div>
+                  <p className={`text-[11px] ${subtleText} mt-1`}>Max {qvMaxStock} in stock</p>
+                </div>
               )}
 
               {qvSpecs.length > 0 && (
@@ -4402,6 +4449,23 @@ export default function Ecommerce() {
                   document.body
                 );
               })()}
+
+              <div className={`space-y-3 mb-5 pb-5 border-b ${cardBorder}`}>
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">↩️</span>
+                  <div>
+                    <p className="text-xs font-semibold">Return &amp; Refund Policy</p>
+                    <p className={`text-[11px] ${subtleText}`}>Your payment stays in escrow until you confirm you've received the item - if there's a problem, you can raise a dispute before releasing funds.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-base leading-none mt-0.5">🔒</span>
+                  <div>
+                    <p className="text-xs font-semibold">Security &amp; Privacy</p>
+                    <p className={`text-[11px] ${subtleText}`}>Buyer-seller chat is end-to-end encrypted. OpenSpace never collects your card or billing details.</p>
+                  </div>
+                </div>
+              </div>
 
               {isOwnQuickViewListing && (
                 <div>
