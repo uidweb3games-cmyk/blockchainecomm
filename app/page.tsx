@@ -1920,7 +1920,7 @@ export default function Ecommerce() {
   const [quickViewSellerName, setQuickViewSellerName] = useState<string | null>(null);
   const [quickViewSellerJoined, setQuickViewSellerJoined] = useState<string | null>(null);
   const [sellerCardOpen, setSellerCardOpen] = useState(false);
-  const [sellerCardPos, setSellerCardPos] = useState<{ top: number; left: number } | null>(null);
+  const [sellerCardPos, setSellerCardPos] = useState<{ top: number; right: number } | null>(null);
   const sellerInfoButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const sellerAddr = quickViewListing?.seller;
@@ -4223,6 +4223,25 @@ export default function Ecommerce() {
                 <p className={`text-xs ${subtleText}`}>{!qvColorReady ? 'Select a color above to continue.' : 'Select a size above to continue.'}</p>
               )}
 
+              {canAddQuickViewToCart && !isOwnQuickViewListing && (
+                <button
+                  onClick={() => {
+                    // Adds one cart line per unit of quantity chosen - the
+                    // cart, checkout math, and the on-chain buyMultiple
+                    // call already treat every line as one unit each, so
+                    // this reuses all of that exactly as-is with no
+                    // changes needed anywhere else in checkout.
+                    for (let i = 0; i < qvQuantity; i++) {
+                      addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
+                    }
+                    setQuickViewId(null);
+                  }}
+                  aria-label="Add to cart"
+                  className="mb-5 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
+                >
+                  <TrolleyIcon className="w-7 h-7" />
+                </button>
+              )}
 
               {qvSpecs.length > 0 && (
                 <div className="mt-6">
@@ -4345,7 +4364,7 @@ export default function Ecommerce() {
                   ref={sellerInfoButtonRef}
                   onClick={() => {
                     const rect = sellerInfoButtonRef.current?.getBoundingClientRect();
-                    if (rect) setSellerCardPos({ top: rect.bottom + 8, left: rect.left });
+                    if (rect) setSellerCardPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
                     setSellerCardOpen(true);
                   }}
                   aria-label="Store details"
@@ -4375,7 +4394,7 @@ export default function Ecommerce() {
                     <div className="fixed inset-0 z-[80]" onClick={() => setSellerCardOpen(false)} />
                     <div
                       className={`fixed ${cardBg} border ${cardBorder} rounded-2xl shadow-xl w-[calc(100vw-2rem)] max-w-lg p-5 z-[81]`}
-                      style={{ top: sellerCardPos?.top ?? 0, left: sellerCardPos?.left ?? 0 }}
+                      style={{ top: sellerCardPos?.top ?? 0, right: sellerCardPos?.right ?? 0 }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button onClick={() => setSellerCardOpen(false)} className={`absolute top-3 right-3 w-6 h-6 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center text-xs`}>✕</button>
@@ -4444,26 +4463,6 @@ export default function Ecommerce() {
                     >+</button>
                   </div>
                   <p className={`text-[11px] ${subtleText} mt-1`}>Max {qvMaxStock} in stock</p>
-                  {!isOwnQuickViewListing && (
-                    <button
-                      onClick={() => {
-                        // Adds one cart line per unit of quantity chosen -
-                        // the cart, checkout math, and the on-chain
-                        // buyMultiple call already treat every line as one
-                        // unit each, so this reuses all of that exactly
-                        // as-is with no changes needed anywhere else in
-                        // checkout.
-                        for (let i = 0; i < qvQuantity; i++) {
-                          addToCart(quickViewListing, quickViewListing.hasVariants ? pickedColor : '', quickViewListing.hasVariants ? pickedSize : '');
-                        }
-                        setQuickViewId(null);
-                      }}
-                      aria-label="Add to cart"
-                      className="mt-4 w-14 h-14 rounded-full bg-gradient-to-br from-lime-400 to-sky-400 flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
-                    >
-                      <TrolleyIcon className="w-7 h-7" />
-                    </button>
-                  )}
                 </div>
               )}
 
