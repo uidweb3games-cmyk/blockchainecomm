@@ -1910,6 +1910,8 @@ export default function Ecommerce() {
   const [quickViewSellerName, setQuickViewSellerName] = useState<string | null>(null);
   const [quickViewSellerJoined, setQuickViewSellerJoined] = useState<string | null>(null);
   const [sellerCardOpen, setSellerCardOpen] = useState(false);
+  const [sellerCardPos, setSellerCardPos] = useState<{ top: number; left: number } | null>(null);
+  const sellerInfoButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const sellerAddr = quickViewListing?.seller;
     setSellerCardOpen(false);
@@ -4333,7 +4335,12 @@ export default function Ecommerce() {
                   )}
                 </Link>
                 <button
-                  onClick={() => setSellerCardOpen(true)}
+                  ref={sellerInfoButtonRef}
+                  onClick={() => {
+                    const rect = sellerInfoButtonRef.current?.getBoundingClientRect();
+                    if (rect) setSellerCardPos({ top: rect.bottom + 8, left: rect.left });
+                    setSellerCardOpen(true);
+                  }}
                   aria-label="Store details"
                   className={`shrink-0 w-5 h-5 rounded-full border ${cardBorder} ${subtleText} text-[10px] flex items-center justify-center ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'}`}
                 >
@@ -4352,34 +4359,38 @@ export default function Ecommerce() {
                   { label: 'Shipping Speed', value: avg('ratingShipping') },
                 ];
                 return createPortal(
-                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4" onClick={() => setSellerCardOpen(false)}>
-                    <div className={`${cardBg} border ${cardBorder} rounded-3xl shadow-lg w-full max-w-md p-5`} onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                          <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
-                        </div>
-                        <button onClick={() => setSellerCardOpen(false)} className={`w-7 h-7 rounded-full shrink-0 ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
+                  <>
+                    {/* Invisible click-catcher to close the card when tapping
+                        elsewhere - same pattern already used by the currency
+                        and notification dropdowns elsewhere on the site: no
+                        dark backdrop, just something to detect an outside
+                        click. */}
+                    <div className="fixed inset-0 z-[80]" onClick={() => setSellerCardOpen(false)} />
+                    <div
+                      className={`fixed ${cardBg} border ${cardBorder} rounded-2xl shadow-xl w-[calc(100vw-2rem)] max-w-lg p-5 z-[81]`}
+                      style={{ top: sellerCardPos?.top ?? 0, left: sellerCardPos?.left ?? 0 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button onClick={() => setSellerCardOpen(false)} className={`absolute top-3 right-3 w-6 h-6 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center text-xs`}>✕</button>
+                      <div className="grid grid-cols-2 gap-6">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide mb-2">Store Info</p>
-                          <div className="space-y-1.5 text-xs">
-                            <div><span className={subtleText}>Name: </span><span className="font-medium">{quickViewSellerName || '—'}</span></div>
-                            <div><span className={subtleText}>Wallet: </span><span className="font-mono">{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</span></div>
-                            <div><span className={subtleText}>Open since: </span><span className="font-medium">{quickViewSellerJoined ? new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
+                          <p className="text-sm font-bold mb-3">Store Info</p>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Name:</span><span className="font-medium">{quickViewSellerName || '—'}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Wallet:</span><span className="font-mono">{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</span></div>
+                            <div className="flex gap-2"><span className={`${subtleText} shrink-0`}>Open since:</span><span className="font-medium">{quickViewSellerJoined ? new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide mb-2">Detailed Seller Ratings</p>
+                          <p className="text-sm font-bold mb-3">Detailed Seller Ratings</p>
                           {withBreakdown.length === 0 ? (
                             <p className={`text-xs ${subtleText}`}>No detailed ratings yet.</p>
                           ) : (
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                               {categories.map((c) => (
-                                <div key={c.label} className="text-xs">
+                                <div key={c.label} className="flex items-center justify-between gap-3 text-xs">
                                   <span className={subtleText}>{c.label}</span>
-                                  <div className="font-semibold">{c.value.toFixed(1)} <span className="text-amber-400">★</span></div>
+                                  <span className="font-semibold shrink-0">{c.value.toFixed(1)} <span className="text-amber-400">★</span></span>
                                 </div>
                               ))}
                             </div>
@@ -4387,7 +4398,7 @@ export default function Ecommerce() {
                         </div>
                       </div>
                     </div>
-                  </div>,
+                  </>,
                   document.body
                 );
               })()}
