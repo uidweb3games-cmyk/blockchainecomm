@@ -1980,14 +1980,18 @@ export default function Ecommerce() {
   const [qvDescription, setQvDescription] = useState('');
   const [qvReviewFilter, setQvReviewFilter] = useState<'all' | 1 | 2 | 3 | 4 | 5>('all');
   const [qvSpecs, setQvSpecs] = useState<{ label: string; value: string }[]>([]);
+  const [qvShippingNote, setQvShippingNote] = useState('');
+  const [qvOriginalPrice, setQvOriginalPrice] = useState<number | null>(null);
   useEffect(() => {
-    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); return; }
+    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); setQvShippingNote(''); setQvOriginalPrice(null); return; }
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
     }).then(({ data, error }) => {
       if (error) { console.error('Failed to load listing details:', error); return; }
       setQvDescription(data?.data?.description || '');
       setQvSpecs(data?.data?.specs || []);
+      setQvShippingNote(data?.data?.shipping_note || '');
+      setQvOriginalPrice(data?.data?.original_price !== null && data?.data?.original_price !== undefined ? Number(data.data.original_price) : null);
     }).catch(() => {});
   }, [quickViewId]);
 
@@ -4236,9 +4240,16 @@ export default function Ecommerce() {
                 );
               })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
-              <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
-                {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
-              </span>
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-2xl font-mono bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+                  {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
+                </span>
+                {qvOriginalPrice !== null && qvOriginalPrice > Number(quickViewListing.price) / 1e18 && (
+                  <span className={`text-sm line-through ${subtleText}`}>
+                    {qvOriginalPrice} {currencySymbol(quickViewListing.paymentToken)}
+                  </span>
+                )}
+              </div>
 
               {quickViewListing.hasVariants ? (
                 <>
@@ -4494,6 +4505,15 @@ export default function Ecommerce() {
               })()}
 
               <div className={`space-y-3 mb-5 pb-5 border-b ${cardBorder}`}>
+                {qvShippingNote.trim() && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-base leading-none mt-0.5">🚚</span>
+                    <div>
+                      <p className="text-xs font-semibold">Shipping</p>
+                      <p className={`text-[11px] ${subtleText}`}>{qvShippingNote}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-start gap-2">
                   <span className="text-base leading-none mt-0.5">↩️</span>
                   <div>
