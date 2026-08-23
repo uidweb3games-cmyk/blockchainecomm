@@ -4249,6 +4249,13 @@ export default function Ecommerce() {
                                 {order.color && `Color: ${order.color}`}{order.color && order.size ? ' · ' : ''}{order.size && `Size: ${order.size}`}
                               </p>
                             )}
+                            {r.ratingItem !== null && r.ratingCommunication !== null && r.ratingShipping !== null && (
+                              <div className={`flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] ${subtleText} mb-1.5`}>
+                                <span>Item: <span className="text-amber-400">{'★'.repeat(r.ratingItem)}{'☆'.repeat(5 - r.ratingItem)}</span></span>
+                                <span>Comm: <span className="text-amber-400">{'★'.repeat(r.ratingCommunication)}{'☆'.repeat(5 - r.ratingCommunication)}</span></span>
+                                <span>Shipping: <span className="text-amber-400">{'★'.repeat(r.ratingShipping)}{'☆'.repeat(5 - r.ratingShipping)}</span></span>
+                              </div>
+                            )}
                             {r.reviewText && <p className="text-sm">{r.reviewText}</p>}
                             <div className="flex items-center justify-between mt-1">
                               <p className={`text-[10px] ${subtleText} font-mono`}>{r.buyerAddress.slice(0, 6)}...{r.buyerAddress.slice(-4)}</p>
