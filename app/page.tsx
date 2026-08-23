@@ -487,6 +487,7 @@ export default function Ecommerce() {
   const [walletChoiceOpen, setWalletChoiceOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [purchasesOpen, setPurchasesOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
   const [sellerProfile, setSellerProfile] = useState<{ shopName: string; bio: string } | null>(null);
   const [sellerRegOpen, setSellerRegOpen] = useState(false);
   const [shopNameInput, setShopNameInput] = useState('');
@@ -2835,6 +2836,12 @@ export default function Ecommerce() {
                             <button onClick={() => { setPurchasesOpen(true); setMenuOpen(false); Array.from(new Set(myPurchases.map((o) => getListingById(o.listingId)?.seller).filter((s): s is string => !!s))).forEach((s) => loadSellerReviews(s)); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
                               📦 My Purchases {myPurchases.filter((o) => !o.released && !o.cancelled).length > 0 ? `(${myPurchases.filter((o) => !o.released && !o.cancelled).length})` : ''}
                             </button>
+                            <button onClick={() => { setMessagesOpen(true); setMenuOpen(false); }} className={`relative w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>
+                              💬 Messages
+                              {allOrders.some((o) => { const l = getListingById(o.listingId); return (o.buyer.toLowerCase() === address?.toLowerCase() || (l && l.seller.toLowerCase() === address?.toLowerCase())) && hasUnreadChat(o.id); }) && (
+                                <span className="absolute top-2.5 right-3 w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]" />
+                              )}
+                            </button>
                             <button onClick={() => { setReferralModalOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>🎁 Refer &amp; Earn</button>
                             <button onClick={() => { setSettingsOpen(true); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}>⚙️ Wallet Settings</button>
                             <button onClick={handleDisconnect} className="w-full py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">Disconnect</button>
@@ -3837,6 +3844,80 @@ export default function Ecommerce() {
           </div>
         </div>
       )}
+
+      {messagesOpen && (() => {
+        // Every order this wallet is part of (as buyer or seller) is a
+        // potential conversation - exactly the same set the background
+        // unread-checker already tracks, just displayed as a list here
+        // instead of individual buttons scattered across order cards.
+        const myConversations = allOrders
+          .filter((o) => {
+            const listing = getListingById(o.listingId);
+            return o.buyer.toLowerCase() === address?.toLowerCase() || (listing && listing.seller.toLowerCase() === address?.toLowerCase());
+          })
+          .map((o) => {
+            const listing = getListingById(o.listingId);
+            const isBuyerHere = o.buyer.toLowerCase() === address?.toLowerCase();
+            const otherParty = isBuyerHere ? (listing?.seller || '') : o.buyer;
+            return { order: o, listing, isBuyerHere, otherParty, lastActivity: chatActivityMap[o.id] || null, unread: hasUnreadChat(o.id) };
+          })
+          .filter((c) => c.listing)
+          .sort((a, b) => {
+            // Conversations with real activity float to the top, most
+            // recent first; ones with no messages yet sit below, most
+            // recently purchased first.
+            if (a.lastActivity && b.lastActivity) return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
+            if (a.lastActivity) return -1;
+            if (b.lastActivity) return 1;
+            return Number(b.order.purchaseTime) - Number(a.order.purchaseTime);
+          });
+        return (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setMessagesOpen(false)}>
+            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] flex flex-col`} onClick={(e) => e.stopPropagation()}>
+              <div className={`px-6 py-4 border-b ${cardBorder} flex items-center justify-between`}>
+                <h3 className="font-semibold text-lg">Messages</h3>
+                <button onClick={() => setMessagesOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {myConversations.length === 0 ? (
+                  <p className={`${subtleText} text-sm py-12 text-center px-6`}>No conversations yet - buy or sell something to start one.</p>
+                ) : (
+                  myConversations.map(({ order, listing, isBuyerHere, otherParty, lastActivity, unread }) => {
+                    const displayImage = listing!.imageUrl && listing!.imageUrl.trim() !== '' ? listing!.imageUrl : FALLBACK_IMAGE;
+                    return (
+                      <button
+                        key={order.id}
+                        onClick={() => {
+                          setMessagesOpen(false);
+                          setChatUnavailable(null);
+                          setChatModalOrderId(order.id);
+                          loadChatMessages(order.id, chatMessagesMap[order.id] !== undefined);
+                          markChatSeen(order.id);
+                        }}
+                        className={`w-full flex items-center gap-3 px-6 py-3 border-b ${cardBorder} last:border-b-0 text-left ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} transition-colors`}
+                      >
+                        <img src={displayImage} alt={listing!.name} className="w-12 h-12 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK_IMAGE; }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-medium truncate">{listing!.name}</p>
+                            {unread && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />}
+                          </div>
+                          <p className={`text-xs ${subtleText} truncate`}>
+                            {isBuyerHere ? 'Seller' : 'Buyer'}: {otherParty.slice(0, 6)}...{otherParty.slice(-4)}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] ${subtleText} shrink-0`}>
+                          {lastActivity ? new Date(lastActivity).toLocaleDateString() : 'No messages yet'}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {referralModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setReferralModalOpen(false)}>
