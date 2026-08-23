@@ -424,14 +424,14 @@ export default function Ecommerce() {
   const [newListingSpecs, setNewListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [newListingDescription, setNewListingDescription] = useState('');
   const [newListingShippingNote, setNewListingShippingNote] = useState('');
-  const [newListingOriginalPrice, setNewListingOriginalPrice] = useState('');
-  const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; shippingNote: string; originalPrice: string; startListingCount: number } | null>(null);
+  const [newListingDiscountPercent, setNewListingDiscountPercent] = useState('');
+  const [pendingListingDetails, setPendingListingDetails] = useState<{ description: string; specs: { label: string; value: string }[]; shippingNote: string; discountPercent: string; startListingCount: number } | null>(null);
   const [pendingListingMedia, setPendingListingMedia] = useState<{ media: { url: string; type: string }[]; startListingCount: number } | null>(null);
   const [editListingMedia, setEditListingMedia] = useState<{ url: string; type: 'image' | 'video' }[]>([]);
   const [editListingSpecs, setEditListingSpecs] = useState<{ label: string; value: string }[]>([]);
   const [editListingDescription, setEditListingDescription] = useState('');
   const [editListingShippingNote, setEditListingShippingNote] = useState('');
-  const [editListingOriginalPrice, setEditListingOriginalPrice] = useState('');
+  const [editListingDiscountPercent, setEditListingDiscountPercent] = useState('');
   const [editListingDetailsLoaded, setEditListingDetailsLoaded] = useState(false);
   const [savingListingDetails, setSavingListingDetails] = useState(false);
   const [editListingMediaLoaded, setEditListingMediaLoaded] = useState(false);
@@ -1194,7 +1194,7 @@ export default function Ecommerce() {
           body: {
             action: 'save', contractAddress: MARKETPLACE_ADDRESS, listingId: newListingId, sellerAddress: address,
             description: pendingListingDetails.description, specs: pendingListingDetails.specs,
-            shippingNote: pendingListingDetails.shippingNote, originalPrice: pendingListingDetails.originalPrice,
+            shippingNote: pendingListingDetails.shippingNote, discountPercent: pendingListingDetails.discountPercent,
             message: auth.message, signature: auth.signature,
           },
         });
@@ -1981,9 +1981,9 @@ export default function Ecommerce() {
   const [qvReviewFilter, setQvReviewFilter] = useState<'all' | 1 | 2 | 3 | 4 | 5>('all');
   const [qvSpecs, setQvSpecs] = useState<{ label: string; value: string }[]>([]);
   const [qvShippingNote, setQvShippingNote] = useState('');
-  const [qvOriginalPrice, setQvOriginalPrice] = useState<number | null>(null);
+  const [qvDiscountPercent, setQvDiscountPercent] = useState<number | null>(null);
   useEffect(() => {
-    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); setQvShippingNote(''); setQvOriginalPrice(null); return; }
+    if (!quickViewId) { setQvDescription(''); setQvSpecs([]); setQvShippingNote(''); setQvDiscountPercent(null); return; }
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: quickViewId },
     }).then(({ data, error }) => {
@@ -1991,7 +1991,7 @@ export default function Ecommerce() {
       setQvDescription(data?.data?.description || '');
       setQvSpecs(data?.data?.specs || []);
       setQvShippingNote(data?.data?.shipping_note || '');
-      setQvOriginalPrice(data?.data?.original_price !== null && data?.data?.original_price !== undefined ? Number(data.data.original_price) : null);
+      setQvDiscountPercent(data?.data?.discount_percent !== null && data?.data?.discount_percent !== undefined ? Number(data.data.discount_percent) : null);
     }).catch(() => {});
   }, [quickViewId]);
 
@@ -2020,7 +2020,7 @@ export default function Ecommerce() {
     setNewListingMedia([]);
     setNewListingDescription('');
     setNewListingShippingNote('');
-    setNewListingOriginalPrice('');
+    setNewListingDiscountPercent('');
     setNewListingSpecs([]);
   };
 
@@ -2041,12 +2041,12 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingOriginalPrice.trim()) {
+    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingDiscountPercent.trim()) {
       setPendingListingDetails({
         description: newListingDescription.trim(),
         specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
         shippingNote: newListingShippingNote.trim(),
-        originalPrice: newListingOriginalPrice.trim(),
+        discountPercent: newListingDiscountPercent.trim(),
         startListingCount: currentCount,
       });
     }
@@ -2080,12 +2080,12 @@ export default function Ecommerce() {
       if (freshResult.data !== undefined) currentCount = Number(freshResult.data);
     } catch (e) {}
     if (newListingMedia.length > 0) setPendingListingMedia({ media: newListingMedia, startListingCount: currentCount });
-    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingOriginalPrice.trim()) {
+    if (newListingDescription.trim() || newListingSpecs.length > 0 || newListingShippingNote.trim() || newListingDiscountPercent.trim()) {
       setPendingListingDetails({
         description: newListingDescription.trim(),
         specs: newListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
         shippingNote: newListingShippingNote.trim(),
-        originalPrice: newListingOriginalPrice.trim(),
+        discountPercent: newListingDiscountPercent.trim(),
         startListingCount: currentCount,
       });
     }
@@ -2124,7 +2124,7 @@ export default function Ecommerce() {
     setEditListingDescription('');
     setEditListingSpecs([]);
     setEditListingShippingNote('');
-    setEditListingOriginalPrice('');
+    setEditListingDiscountPercent('');
     setEditListingDetailsLoaded(false);
     supabase.functions.invoke('listing-details', {
       body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, listingId: listing.id },
@@ -2133,7 +2133,7 @@ export default function Ecommerce() {
       setEditListingDescription(data?.data?.description || '');
       setEditListingSpecs(data?.data?.specs || []);
       setEditListingShippingNote(data?.data?.shipping_note || '');
-      setEditListingOriginalPrice(data?.data?.original_price !== null && data?.data?.original_price !== undefined ? String(data.data.original_price) : '');
+      setEditListingDiscountPercent(data?.data?.discount_percent !== null && data?.data?.discount_percent !== undefined ? String(data.data.discount_percent) : '');
       setEditListingDetailsLoaded(true);
     }).catch(() => setEditListingDetailsLoaded(true));
   };
@@ -2218,7 +2218,7 @@ export default function Ecommerce() {
           description: editListingDescription.trim(),
           specs: editListingSpecs.filter((s) => s.label.trim() || s.value.trim()),
           shippingNote: editListingShippingNote.trim(),
-          originalPrice: editListingOriginalPrice.trim(),
+          discountPercent: editListingDiscountPercent.trim(),
           message: auth.message, signature: auth.signature,
         },
       });
@@ -3291,15 +3291,15 @@ export default function Ecommerce() {
                         <p className={`text-[11px] ${subtleText} mt-1`}>Shown to buyers as a simple note - not a calculated rate.</p>
                       </div>
                       <div>
-                        <label className={`text-xs ${subtleText} block mb-1`}>Original price (optional)</label>
+                        <label className={`text-xs ${subtleText} block mb-1`}>Discount % (optional)</label>
                         <input
-                          type="number" step="0.0001" min="0"
-                          value={newListingOriginalPrice}
-                          onChange={(e) => setNewListingOriginalPrice(e.target.value)}
-                          placeholder="e.g. 0.02"
+                          type="number" step="1" min="1" max="99"
+                          value={newListingDiscountPercent}
+                          onChange={(e) => setNewListingDiscountPercent(e.target.value)}
+                          placeholder="e.g. 20"
                           className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                         />
-                        <p className={`text-[11px] ${subtleText} mt-1`}>Shown crossed out next to your real price, to highlight a discount. Purely for display - has no effect on what buyers actually pay.</p>
+                        <p className={`text-[11px] ${subtleText} mt-1`}>Example: Price is 10 and you enter 20 here → buyers see "10, 20% OFF" with "12.5" crossed out. This box is ONLY the percentage - never your price.</p>
                       </div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={itemCategory} onChange={(e) => setItemCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
                       <div><label className={`text-xs ${subtleText} block mb-1`}>Currency</label><select value={itemCurrency} onChange={(e) => setItemCurrency(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{Object.keys(LIST_CURRENCIES).map((key) => (<option key={key} value={key} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{LIST_CURRENCIES[key].label}</option>))}</select></div>
@@ -3903,15 +3903,15 @@ export default function Ecommerce() {
                 />
               </div>
               <div>
-                <label className={`text-xs ${subtleText} block mb-1`}>Original price (optional)</label>
+                <label className={`text-xs ${subtleText} block mb-1`}>Discount % (optional)</label>
                 <input
-                  type="number" step="0.0001" min="0"
-                  value={editListingOriginalPrice}
-                  onChange={(e) => setEditListingOriginalPrice(e.target.value)}
-                  placeholder="e.g. 0.02"
+                  type="number" step="1" min="1" max="99"
+                  value={editListingDiscountPercent}
+                  onChange={(e) => setEditListingDiscountPercent(e.target.value)}
+                  placeholder="e.g. 20"
                   className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}
                 />
-                <p className={`text-[11px] ${subtleText} mt-1`}>Shown crossed out next to your real price. Purely for display - has no effect on what buyers actually pay.</p>
+                <p className={`text-[11px] ${subtleText} mt-1`}>Example: Price is 10 and you enter 20 here → buyers see "10, 20% OFF" with "12.5" crossed out. This box is ONLY the percentage - never your price.</p>
               </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Category</label><select value={editCategory} onChange={(e) => setEditCategory(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`}>{CATEGORIES.map((c) => (<option key={c} value={c} style={{ backgroundColor: darkMode ? '#18181b' : '#ffffff', color: darkMode ? '#ffffff' : '#18181b' }}>{c}</option>))}</select></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Price</label><input type="number" step="0.0001" min="0" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
@@ -4240,25 +4240,34 @@ export default function Ecommerce() {
                 );
               })()}
               <h3 className="font-semibold text-xl mb-2">{quickViewListing.name}</h3>
-              {qvOriginalPrice !== null && qvOriginalPrice > Number(quickViewListing.price) / 1e18 ? (
-                <div className={`mb-4 rounded-2xl overflow-hidden border ${cardBorder}`}>
-                  <div className="flex items-center gap-2 px-4 py-2 bg-amber-400/20">
-                    <span className="text-base leading-none">🛒</span>
-                    <span className="text-sm font-bold text-amber-600">Special Offer</span>
-                  </div>
-                  <div className={`px-4 py-3 ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-2xl font-mono bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
-                        {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500">
-                        {Math.round((1 - (Number(quickViewListing.price) / 1e18) / qvOriginalPrice) * 100)}% OFF
-                      </span>
+              {qvDiscountPercent !== null && qvDiscountPercent > 0 && qvDiscountPercent < 100 ? (() => {
+                const realPrice = Number(quickViewListing.price) / 1e18;
+                // "Was" price calculated fresh from the current real price
+                // and the seller's discount percentage - so it always
+                // stays accurate even if the seller changes their price
+                // later, instead of being a fixed old number that could
+                // go stale.
+                const wasPrice = realPrice / (1 - qvDiscountPercent / 100);
+                return (
+                  <div className={`mb-4 rounded-2xl overflow-hidden border ${cardBorder}`}>
+                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-400/20">
+                      <span className="text-base leading-none">🛒</span>
+                      <span className="text-sm font-bold text-amber-600">Special Offer</span>
                     </div>
-                    <span className={`text-sm line-through ${subtleText}`}>{qvOriginalPrice} {currencySymbol(quickViewListing.paymentToken)}</span>
+                    <div className={`px-4 py-3 ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-2xl font-mono bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
+                          {realPrice.toString()} {currencySymbol(quickViewListing.paymentToken)}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/10 text-red-500">
+                          {qvDiscountPercent}% OFF
+                        </span>
+                      </div>
+                      <span className={`text-sm line-through ${subtleText}`}>{wasPrice.toFixed(4)} {currencySymbol(quickViewListing.paymentToken)}</span>
+                    </div>
                   </div>
-                </div>
-              ) : (
+                );
+              })() : (
                 <span className="text-2xl font-mono block mb-4 bg-gradient-to-r from-lime-500 to-sky-500 bg-clip-text text-transparent">
                   {(Number(quickViewListing.price) / 1e18).toString()} {currencySymbol(quickViewListing.paymentToken)}
                 </span>
