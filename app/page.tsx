@@ -4320,75 +4320,77 @@ export default function Ecommerce() {
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
             <div className={`w-full md:w-[280px] md:shrink-0 md:min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
-              <div className="relative mb-4">
-                <div className="flex items-center gap-2">
-                  <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0">
-                    <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                    {quickViewSellerName ? (
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold underline leading-tight truncate">{quickViewSellerName}</p>
-                        <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                      </div>
-                    ) : (
-                      <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                    )}
-                  </Link>
-                  <button
-                    onClick={() => setSellerCardOpen((v) => !v)}
-                    aria-label="Store details"
-                    className={`shrink-0 w-5 h-5 rounded-full border ${cardBorder} ${subtleText} text-[10px] flex items-center justify-center ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'}`}
-                  >
-                    ⓘ
-                  </button>
-                </div>
+              <div className="flex items-center gap-2 mb-4">
+                <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0">
+                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                  {quickViewSellerName ? (
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold underline leading-tight truncate">{quickViewSellerName}</p>
+                      <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                    </div>
+                  ) : (
+                    <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                  )}
+                </Link>
+                <button
+                  onClick={() => setSellerCardOpen(true)}
+                  aria-label="Store details"
+                  className={`shrink-0 w-5 h-5 rounded-full border ${cardBorder} ${subtleText} text-[10px] flex items-center justify-center ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'}`}
+                >
+                  ⓘ
+                </button>
+              </div>
 
-                {sellerCardOpen && (() => {
-                  const reviews = sellerReviewsMap[quickViewListing.seller.toLowerCase()] || [];
-                  const withBreakdown = reviews.filter((r) => r.ratingItem !== null && r.ratingCommunication !== null && r.ratingShipping !== null);
-                  const avg = (key: 'ratingItem' | 'ratingCommunication' | 'ratingShipping') =>
-                    withBreakdown.length > 0 ? withBreakdown.reduce((sum, r) => sum + (r[key] || 0), 0) / withBreakdown.length : 0;
-                  const categories = [
-                    { label: 'Item as Described', value: avg('ratingItem') },
-                    { label: 'Communication', value: avg('ratingCommunication') },
-                    { label: 'Shipping Speed', value: avg('ratingShipping') },
-                  ];
-                  return createPortal(
-                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4" onClick={() => setSellerCardOpen(false)}>
-                      <div className={`${cardBg} border ${cardBorder} rounded-3xl shadow-lg w-full max-w-xs p-5`} onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
-                              <p className={`text-[10px] ${subtleText} font-mono`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                            </div>
-                          </div>
-                          <button onClick={() => setSellerCardOpen(false)} className={`w-7 h-7 rounded-full shrink-0 ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+              {sellerCardOpen && (() => {
+                const reviews = sellerReviewsMap[quickViewListing.seller.toLowerCase()] || [];
+                const withBreakdown = reviews.filter((r) => r.ratingItem !== null && r.ratingCommunication !== null && r.ratingShipping !== null);
+                const avg = (key: 'ratingItem' | 'ratingCommunication' | 'ratingShipping') =>
+                  withBreakdown.length > 0 ? withBreakdown.reduce((sum, r) => sum + (r[key] || 0), 0) / withBreakdown.length : 0;
+                const categories = [
+                  { label: 'Item as Described', value: avg('ratingItem') },
+                  { label: 'Communication', value: avg('ratingCommunication') },
+                  { label: 'Shipping Speed', value: avg('ratingShipping') },
+                ];
+                return createPortal(
+                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] p-4" onClick={() => setSellerCardOpen(false)}>
+                    <div className={`${cardBg} border ${cardBorder} rounded-3xl shadow-lg w-full max-w-md p-5`} onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                          <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
                         </div>
-                        <p className={`text-[11px] ${subtleText} mb-3`}>
-                          {quickViewSellerJoined ? `Member since ${new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : 'Member since unknown'}
-                        </p>
-                        <div className={`border-t ${cardBorder} pt-3`}>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide mb-2">Detailed Seller Ratings</p>
+                        <button onClick={() => setSellerCardOpen(false)} className={`w-7 h-7 rounded-full shrink-0 ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide mb-2">Store Info</p>
+                          <div className="space-y-1.5 text-xs">
+                            <div><span className={subtleText}>Name: </span><span className="font-medium">{quickViewSellerName || '—'}</span></div>
+                            <div><span className={subtleText}>Wallet: </span><span className="font-mono">{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</span></div>
+                            <div><span className={subtleText}>Open since: </span><span className="font-medium">{quickViewSellerJoined ? new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span></div>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide mb-2">Detailed Seller Ratings</p>
                           {withBreakdown.length === 0 ? (
                             <p className={`text-xs ${subtleText}`}>No detailed ratings yet.</p>
                           ) : (
                             <div className="space-y-1.5">
                               {categories.map((c) => (
-                                <div key={c.label} className="flex items-center justify-between text-xs">
+                                <div key={c.label} className="text-xs">
                                   <span className={subtleText}>{c.label}</span>
-                                  <span className="font-medium">{c.value.toFixed(1)} <span className="text-amber-400">★</span></span>
+                                  <div className="font-semibold">{c.value.toFixed(1)} <span className="text-amber-400">★</span></div>
                                 </div>
                               ))}
                             </div>
                           )}
                         </div>
                       </div>
-                    </div>,
-                    document.body
-                  );
-                })()}
-              </div>
+                    </div>
+                  </div>,
+                  document.body
+                );
+              })()}
 
               {isOwnQuickViewListing && (
                 <div>
