@@ -1918,14 +1918,19 @@ export default function Ecommerce() {
   // Shop name for whoever is selling the item currently open in Quick View -
   // public lookup, no signature needed, works for any visitor.
   const [quickViewSellerName, setQuickViewSellerName] = useState<string | null>(null);
+  const [quickViewSellerJoined, setQuickViewSellerJoined] = useState<string | null>(null);
+  const [sellerCardOpen, setSellerCardOpen] = useState(false);
   useEffect(() => {
     const sellerAddr = quickViewListing?.seller;
-    if (!sellerAddr) { setQuickViewSellerName(null); return; }
+    setSellerCardOpen(false);
+    if (!sellerAddr) { setQuickViewSellerName(null); setQuickViewSellerJoined(null); return; }
     setQuickViewSellerName(null);
+    setQuickViewSellerJoined(null);
     supabase.functions.invoke('seller-profiles', {
       body: { action: 'getProfile', contractAddress: MARKETPLACE_ADDRESS, walletAddress: sellerAddr },
     }).then(({ data, error }) => {
       if (!error && data?.data?.shop_name) setQuickViewSellerName(data.data.shop_name);
+      if (!error && data?.data?.created_at) setQuickViewSellerJoined(data.data.created_at);
     }).catch(() => {});
     loadSellerReviews(sellerAddr);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4277,17 +4282,72 @@ export default function Ecommerce() {
 
             {/* ---------- RIGHT: seller + actions sidebar ---------- */}
             <div className={`w-full md:w-[280px] md:shrink-0 md:min-h-0 md:h-full md:overflow-y-auto border-t md:border-t-0 md:border-l ${cardBorder} p-6 [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
-              <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity mb-4">
-                <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
-                {quickViewSellerName ? (
-                  <div>
-                    <p className="text-sm font-semibold underline leading-tight">{quickViewSellerName}</p>
-                    <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                  </div>
-                ) : (
-                  <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
-                )}
-              </Link>
+              <div className="relative mb-4">
+                <div className="flex items-center gap-2">
+                  <Link href={`/seller/${quickViewListing.seller}`} target="_blank" className="flex items-center gap-2 hover:opacity-80 transition-opacity min-w-0">
+                    <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                    {quickViewSellerName ? (
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold underline leading-tight truncate">{quickViewSellerName}</p>
+                        <p className={`text-[10px] ${subtleText} font-mono leading-tight`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                      </div>
+                    ) : (
+                      <p className={`text-xs ${subtleText} font-mono underline`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                    )}
+                  </Link>
+                  <button
+                    onClick={() => setSellerCardOpen((v) => !v)}
+                    aria-label="Store details"
+                    className={`shrink-0 w-5 h-5 rounded-full border ${cardBorder} ${subtleText} text-[10px] flex items-center justify-center ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'}`}
+                  >
+                    ⓘ
+                  </button>
+                </div>
+
+                {sellerCardOpen && (() => {
+                  const reviews = sellerReviewsMap[quickViewListing.seller.toLowerCase()] || [];
+                  const withBreakdown = reviews.filter((r) => r.ratingItem !== null && r.ratingCommunication !== null && r.ratingShipping !== null);
+                  const avg = (key: 'ratingItem' | 'ratingCommunication' | 'ratingShipping') =>
+                    withBreakdown.length > 0 ? withBreakdown.reduce((sum, r) => sum + (r[key] || 0), 0) / withBreakdown.length : 0;
+                  const categories = [
+                    { label: 'Item as Described', value: avg('ratingItem') },
+                    { label: 'Communication', value: avg('ratingCommunication') },
+                    { label: 'Shipping Speed', value: avg('ratingShipping') },
+                  ];
+                  return (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setSellerCardOpen(false)} />
+                      <div className={`absolute left-0 top-full mt-2 w-72 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg z-50 p-4`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarGradient(quickViewListing.seller)} flex items-center justify-center text-[11px] font-bold text-white shrink-0`}>{quickViewListing.seller.slice(2, 4).toUpperCase()}</div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold truncate">{quickViewSellerName || 'This seller'}</p>
+                            <p className={`text-[10px] ${subtleText} font-mono`}>{quickViewListing.seller.slice(0, 6)}...{quickViewListing.seller.slice(-4)}</p>
+                          </div>
+                        </div>
+                        <p className={`text-[11px] ${subtleText} mb-3`}>
+                          {quickViewSellerJoined ? `Member since ${new Date(quickViewSellerJoined).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : 'Member since unknown'}
+                        </p>
+                        <div className={`border-t ${cardBorder} pt-3`}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide mb-2">Detailed Seller Ratings</p>
+                          {withBreakdown.length === 0 ? (
+                            <p className={`text-xs ${subtleText}`}>No detailed ratings yet.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {categories.map((c) => (
+                                <div key={c.label} className="flex items-center justify-between text-xs">
+                                  <span className={subtleText}>{c.label}</span>
+                                  <span className="font-medium">{c.value.toFixed(1)} <span className="text-amber-400">★</span></span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
 
               {isOwnQuickViewListing && (
                 <div>
