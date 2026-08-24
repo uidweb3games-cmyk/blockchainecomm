@@ -2892,7 +2892,7 @@ export default function Ecommerce() {
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="relative">
+            <div className="relative" onMouseLeave={() => setCurrencyMenuOpen(false)}>
               <button onClick={() => { const next = !currencyMenuOpen; closeAllDropdowns(); setCurrencyMenuOpen(next); }} title="Filter by currency" className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 💱
               </button>
@@ -2916,7 +2916,7 @@ export default function Ecommerce() {
             </button>
 
             {isConnected && (
-              <div className="relative">
+              <div className="relative" onMouseLeave={() => setNotifBellOpen(false)}>
                 <button onClick={() => { const next = !notifBellOpen; closeAllDropdowns(); setNotifBellOpen(next); if (next && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                   🔔
                   {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
@@ -2948,7 +2948,7 @@ export default function Ecommerce() {
               </div>
             )}
 
-            <div className="relative">
+            <div className="relative" onMouseLeave={() => setMenuOpen(false)}>
               <button onClick={() => { const next = !menuOpen; closeAllDropdowns(); setMenuOpen(next); }} className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 ☰
               </button>
@@ -3013,7 +3013,7 @@ export default function Ecommerce() {
               <div className="w-8 h-8 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">🔍</div>
             </div>
             <div className="max-w-6xl mx-auto flex items-center gap-2 flex-wrap">
-              <div className="relative">
+              <div className="relative" onMouseLeave={() => setSortMenuOpen(false)}>
                 <button onClick={() => { const next = !sortMenuOpen; closeAllDropdowns(); setSortMenuOpen(next); }} className={`px-3 py-1.5 rounded-full border ${cardBorder} text-xs font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} flex items-center gap-1`}>
                   Sort: {sortOrder === 'newest' ? 'Newest' : sortOrder === 'price_low' ? 'Price: Low to High' : 'Price: High to Low'}
                   <span className="text-[10px]">▾</span>
@@ -3217,7 +3217,7 @@ export default function Ecommerce() {
                 )}
               </div>
               {isConnected && sellerProfile && (
-                <div className="relative">
+                <div className="relative" onMouseLeave={() => setSellPageMenuOpen(false)}>
                   <button onClick={() => { const next = !sellPageMenuOpen; closeAllDropdowns(); setSellPageMenuOpen(next); }} className="relative flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
                     {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : sellSubTab === 'history' ? '📜 Sold History' : '📢 Sponsored Ads'}
                     <span className="text-xs">▾</span>
