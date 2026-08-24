@@ -11,6 +11,9 @@ import { BarChart, Bar, ResponsiveContainer, Cell, LineChart, Line, XAxis, YAxis
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
 import { supabase } from './supabaseClient';
 import SortMenu from './SortMenu';
+import CurrencyMenu from './CurrencyMenu';
+import NotificationBell from './NotificationBell';
+import { DropdownProvider } from './Dropdown';
 import nacl from 'tweetnacl';
 
 const SHIPPING_LABELS = ['Processing', 'Shipped', 'Delivered'];
@@ -505,7 +508,6 @@ export default function Ecommerce() {
   const [qvQuantity, setQvQuantity] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [currencyMenuOpen, setCurrencyMenuOpen] = useState(false);
   const [emailStep, setEmailStep] = useState<'input' | 'code'>('input');
   const [emailInput, setEmailInput] = useState('');
   const [codeInput, setCodeInput] = useState('');
@@ -550,7 +552,6 @@ export default function Ecommerce() {
   const [pendingActionNotify, setPendingActionNotify] = useState<{ toAddress: string; title: string; body: string; orderId: number } | null>(null);
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
   const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
-  const [notifBellOpen, setNotifBellOpen] = useState(false);
 
   // Closes every other small dropdown menu on the page - called right
   // before opening any ONE of them, so two can never be visually stacked
@@ -558,10 +559,12 @@ export default function Ecommerce() {
   // page's sub-menu both being open together). Sort menu isn't included
   // here anymore - it's now a fully self-contained component with its own
   // internal state, no longer coordinated from this parent at all.
+  // Sort, Currency, and Notifications now all coordinate through the
+  // shared dropdown context instead of this function - only the two
+  // remaining still-inline dropdowns (hamburger menu, sell page sub-menu)
+  // still need to close each other this way.
   const closeAllDropdowns = () => {
     setMenuOpen(false);
-    setCurrencyMenuOpen(false);
-    setNotifBellOpen(false);
     setSellPageMenuOpen(false);
   };
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -2872,6 +2875,7 @@ export default function Ecommerce() {
   };
 
   return (
+    <DropdownProvider>
     <div className={`min-h-screen ${bg} ${text} transition-colors duration-300 pb-12 flex flex-col overflow-x-hidden`}>
       <header className={`border-b ${cardBorder} sticky top-0 ${headerBg} backdrop-blur-xl z-50`}>
         {privyAuthenticated && !isConnected && !walletSetupTimedOut && (
@@ -2893,23 +2897,13 @@ export default function Ecommerce() {
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="relative" onMouseLeave={() => setCurrencyMenuOpen(false)}>
-              <button onClick={() => { const next = !currencyMenuOpen; closeAllDropdowns(); setCurrencyMenuOpen(next); }} title="Filter by currency" className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
-                💱
-              </button>
-              {currencyMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setCurrencyMenuOpen(false)} />
-                  <div className={`absolute right-0 mt-2 w-44 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
-                    {Object.keys(VIEW_CURRENCIES).map((key) => (
-                      <button key={key} onClick={() => { setViewCurrency(key); setCurrencyMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${viewCurrency === key ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>
-                        {VIEW_CURRENCIES[key].label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <CurrencyMenu
+              viewCurrency={viewCurrency}
+              setViewCurrency={setViewCurrency}
+              darkMode={darkMode}
+              cardBg={cardBg}
+              cardBorder={cardBorder}
+            />
 
             <button onClick={() => setCartOpen(true)} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform">
               <TrolleyIcon className="w-6 h-6" />
@@ -2917,36 +2911,17 @@ export default function Ecommerce() {
             </button>
 
             {isConnected && (
-              <div className="relative" onMouseLeave={() => setNotifBellOpen(false)}>
-                <button onClick={() => { const next = !notifBellOpen; closeAllDropdowns(); setNotifBellOpen(next); if (next && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
-                  🔔
-                  {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
-                </button>
-                {notifBellOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setNotifBellOpen(false)} />
-                    <div className={`absolute right-0 mt-2 w-80 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
-                      <div className={`px-4 py-3 border-b ${cardBorder} flex items-center justify-between`}>
-                        <p className="font-semibold text-sm">Notifications</p>
-                        {!pushEnabled && (
-                          <button onClick={enablePushNotifications} className="text-[11px] text-sky-500 hover:text-sky-600 font-medium">Enable push</button>
-                        )}
-                      </div>
-                      {notifications.length === 0 ? (
-                        <p className={`text-sm ${subtleText} text-center py-8 px-4`}>No notifications yet.</p>
-                      ) : (
-                        notifications.map((n) => (
-                          <div key={n.id} className={`px-4 py-3 border-b ${cardBorder} last:border-b-0 ${!n.seen ? (darkMode ? 'bg-white/5' : 'bg-lime-50') : ''}`}>
-                            <p className="text-sm font-medium">{n.title}</p>
-                            <p className={`text-xs ${subtleText} mt-0.5`}>{n.body}</p>
-                            <p className={`text-[10px] ${subtleText} mt-1`}>{new Date(n.createdAt).toLocaleString()}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <NotificationBell
+                notifications={notifications}
+                unseenNotifCount={unseenNotifCount}
+                markNotificationsSeen={markNotificationsSeen}
+                pushEnabled={pushEnabled}
+                enablePushNotifications={enablePushNotifications}
+                darkMode={darkMode}
+                cardBg={cardBg}
+                cardBorder={cardBorder}
+                subtleText={subtleText}
+              />
             )}
 
             <div className="relative" onMouseLeave={() => setMenuOpen(false)}>
@@ -5292,5 +5267,6 @@ export default function Ecommerce() {
         </div>
       )}
     </div>
+    </DropdownProvider>
   );
 }
