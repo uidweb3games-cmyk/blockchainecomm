@@ -551,6 +551,18 @@ export default function Ecommerce() {
   const [awaitingPurchaseTx, setAwaitingPurchaseTx] = useState(false);
   const [notifications, setNotifications] = useState<{ id: number; orderId: number | null; title: string; body: string; seen: boolean; createdAt: string }[]>([]);
   const [notifBellOpen, setNotifBellOpen] = useState(false);
+
+  // Closes every other small dropdown menu on the page - called right
+  // before opening any ONE of them, so two can never be visually stacked
+  // on top of each other at once (e.g. the hamburger menu and the sell
+  // page's sub-menu both being open together).
+  const closeAllDropdowns = () => {
+    setMenuOpen(false);
+    setCurrencyMenuOpen(false);
+    setNotifBellOpen(false);
+    setSortMenuOpen(false);
+    setSellPageMenuOpen(false);
+  };
   const [pushEnabled, setPushEnabled] = useState(false);
 
   const { ready: privyReady, authenticated: privyAuthenticated, logout: privyLogout, user: privyUser, exportWallet } = usePrivy();
@@ -2881,7 +2893,7 @@ export default function Ecommerce() {
 
           <div className="flex items-center gap-2 shrink-0">
             <div className="relative">
-              <button onClick={() => setCurrencyMenuOpen((v) => !v)} title="Filter by currency" className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
+              <button onClick={() => { const next = !currencyMenuOpen; closeAllDropdowns(); setCurrencyMenuOpen(next); }} title="Filter by currency" className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 💱
               </button>
               {currencyMenuOpen && (
@@ -2905,14 +2917,14 @@ export default function Ecommerce() {
 
             {isConnected && (
               <div className="relative">
-                <button onClick={() => { setNotifBellOpen((v) => !v); if (!notifBellOpen && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
+                <button onClick={() => { const next = !notifBellOpen; closeAllDropdowns(); setNotifBellOpen(next); if (next && unseenNotifCount > 0) markNotificationsSeen(); }} className="relative w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                   🔔
                   {unseenNotifCount > 0 && (<span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">{unseenNotifCount}</span>)}
                 </button>
                 {notifBellOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setNotifBellOpen(false)} />
-                    <div className={`absolute right-0 mt-2 w-80 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto`}>
+                    <div className={`absolute right-0 mt-2 w-80 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
                       <div className={`px-4 py-3 border-b ${cardBorder} flex items-center justify-between`}>
                         <p className="font-semibold text-sm">Notifications</p>
                         {!pushEnabled && (
@@ -2937,13 +2949,13 @@ export default function Ecommerce() {
             )}
 
             <div className="relative">
-              <button onClick={() => setMenuOpen((v) => !v)} className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
+              <button onClick={() => { const next = !menuOpen; closeAllDropdowns(); setMenuOpen(next); }} className="w-10 h-10 flex items-center justify-center hover:scale-105 active:scale-95 transition-transform text-2xl">
                 ☰
               </button>
               {menuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                  <div className={`absolute right-0 mt-2 w-64 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-[75vh] overflow-y-auto`}>
+                  <div className={`absolute right-0 mt-2 w-64 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50 max-h-[75vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
                     <div className="p-2">
                       <div className="space-y-1">
                         <button onClick={() => { setActiveTab('shop'); setMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium ${activeTab === 'shop' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>🛍 Buy</button>
@@ -3002,7 +3014,7 @@ export default function Ecommerce() {
             </div>
             <div className="max-w-6xl mx-auto flex items-center gap-2 flex-wrap">
               <div className="relative">
-                <button onClick={() => setSortMenuOpen((v) => !v)} className={`px-3 py-1.5 rounded-full border ${cardBorder} text-xs font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} flex items-center gap-1`}>
+                <button onClick={() => { const next = !sortMenuOpen; closeAllDropdowns(); setSortMenuOpen(next); }} className={`px-3 py-1.5 rounded-full border ${cardBorder} text-xs font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} flex items-center gap-1`}>
                   Sort: {sortOrder === 'newest' ? 'Newest' : sortOrder === 'price_low' ? 'Price: Low to High' : 'Price: High to Low'}
                   <span className="text-[10px]">▾</span>
                 </button>
@@ -3206,7 +3218,7 @@ export default function Ecommerce() {
               </div>
               {isConnected && sellerProfile && (
                 <div className="relative">
-                  <button onClick={() => setSellPageMenuOpen((v) => !v)} className="relative flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
+                  <button onClick={() => { const next = !sellPageMenuOpen; closeAllDropdowns(); setSellPageMenuOpen(next); }} className="relative flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900 rounded-2xl font-semibold hover:opacity-90 transition-opacity whitespace-nowrap shadow-[0_0_15px_rgba(163,230,53,0.3)]">
                     {sellSubTab === 'list' ? '📝 List an Item' : sellSubTab === 'fulfill' ? '📦 Orders to Fulfill' : sellSubTab === 'history' ? '📜 Sold History' : '📢 Sponsored Ads'}
                     <span className="text-xs">▾</span>
                     {myOrdersToFulfill.length > 0 && (
@@ -3443,7 +3455,7 @@ export default function Ecommerce() {
                           {parsedColors.length > 0 && parsedSizes.length > 0 && (
                             <div>
                               <label className={`text-xs ${subtleText} block mb-2`}>Stock per color/size</label>
-                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                              <div className="space-y-2 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden pr-1" style={{ scrollbarWidth: 'none' }}>
                                 {parsedColors.map((c) => (
                                   <div key={c}>
                                     <p className="text-xs font-semibold mb-1">{c}</p>
@@ -3473,7 +3485,7 @@ export default function Ecommerce() {
                           {parsedColors.length > 0 && parsedSizes.length === 0 && (
                             <div>
                               <label className={`text-xs ${subtleText} block mb-2`}>Stock per color</label>
-                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                              <div className="space-y-2 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden pr-1" style={{ scrollbarWidth: 'none' }}>
                                 {parsedColors.map((c) => {
                                   const key = `${c}|${NO_VARIANT}`;
                                   return (
@@ -3496,7 +3508,7 @@ export default function Ecommerce() {
                           {parsedColors.length === 0 && parsedSizes.length > 0 && (
                             <div>
                               <label className={`text-xs ${subtleText} block mb-2`}>Stock per size</label>
-                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                              <div className="space-y-2 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden pr-1" style={{ scrollbarWidth: 'none' }}>
                                 {parsedSizes.map((s) => {
                                   const key = `${NO_VARIANT}|${s}`;
                                   return (
@@ -3570,7 +3582,7 @@ export default function Ecommerce() {
                         {myListings.length === 0 ? (
                           <p className={`text-sm ${subtleText} mb-4`}>List an item first to feature it.</p>
                         ) : (
-                          <div className="space-y-2 mb-4 max-h-64 overflow-y-auto pr-1">
+                          <div className="space-y-2 mb-4 max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden pr-1" style={{ scrollbarWidth: 'none' }}>
                             {myListings.map((listing) => {
                               const checked = selectedFeaturedIds.includes(listing.id);
                               return (
@@ -3758,7 +3770,7 @@ export default function Ecommerce() {
               </div>
             </div>
 
-            <div className="px-6 py-6 overflow-y-auto flex-1">
+            <div className="px-6 py-6 overflow-y-auto [&::-webkit-scrollbar]:hidden flex-1" style={{ scrollbarWidth: 'none' }}>
               {sellerOnboardStep === 1 && (
                 <div>
                   <div className="text-4xl mb-4">🏪</div>
@@ -3858,7 +3870,7 @@ export default function Ecommerce() {
 
       {editingListingId !== null && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setEditingListingId(null)}>
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg">Edit Listing</h3>
               <button onClick={() => setEditingListingId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
@@ -4027,7 +4039,7 @@ export default function Ecommerce() {
                   </div>
                   <div>
                     <label className={`text-xs ${subtleText} block mb-2`}>Stock per color/size</label>
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <div className="space-y-2 max-h-56 overflow-y-auto [&::-webkit-scrollbar]:hidden pr-1" style={{ scrollbarWidth: 'none' }}>
                       {getListingById(editingListingId)!.colors.map((c) => (
                         <div key={c}>
                           <p className="text-xs font-semibold mb-1">{c}</p>
@@ -4155,7 +4167,7 @@ export default function Ecommerce() {
               phases (video gallery, specs, reviews, seller card) will get
               built into. */}
           <div
-            className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] md:h-[85vh] md:max-h-[85vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto md:overflow-hidden md:max-w-5xl flex flex-col md:flex-row`}
+            className={`${cardBg} w-full h-full sm:h-auto sm:max-h-[92vh] md:h-[85vh] md:max-h-[85vh] sm:rounded-3xl border-0 sm:border ${cardBorder} overflow-y-auto [&::-webkit-scrollbar]:hidden md:overflow-hidden md:max-w-5xl flex flex-col md:flex-row`} style={{ scrollbarWidth: 'none' }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* ---------- LEFT: thumbnail rail + main image/video ---------- */}
@@ -4712,7 +4724,7 @@ export default function Ecommerce() {
 
       {cartOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[65] p-4" onClick={() => setCartOpen(false)}>
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4"><h3 className="font-semibold text-lg">Your Cart</h3><button onClick={() => setCartOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button></div>
             {cart.length === 0 ? (
               <p className={`${subtleText} text-sm py-8 text-center`}>Your cart is empty. Tap any item to add it.</p>
@@ -4759,7 +4771,7 @@ export default function Ecommerce() {
 
       {shippingModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[90vh] overflow-y-auto`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
             <h3 className="font-semibold text-lg mb-1">Shipping Details</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Saved securely so your seller can view it to ship your order.</p>
             <div className="space-y-3 mb-5">
@@ -4850,7 +4862,7 @@ export default function Ecommerce() {
                 </div>
                 <button onClick={() => setChatModalOrderId(null)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center shrink-0`}>✕</button>
               </div>
-              <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden px-6 py-4 space-y-3" style={{ scrollbarWidth: 'none' }}>
                 {chatLoading ? (
                   <p className={`text-sm ${subtleText} text-center py-8`}>Decrypting messages...</p>
                 ) : messages.length === 0 ? (
@@ -4948,7 +4960,7 @@ export default function Ecommerce() {
         const outcome = getDisputeOutcome(evidenceModalOrderId);
         return (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4" onClick={() => setEvidenceModalOrderId(null)}>
-            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+            <div className={`${cardBg} rounded-3xl w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }} onClick={(e) => e.stopPropagation()}>
               <div className="px-6 py-4 flex items-center justify-between">
                 <div>
                   <h3 className="font-semibold text-lg">Dispute Evidence</h3>
@@ -5017,7 +5029,7 @@ export default function Ecommerce() {
           <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder}`}>
             <h3 className="font-semibold text-lg mb-1">Open a Dispute</h3>
             <p className={`text-xs ${subtleText} mb-4`}>Select the trade you have an issue with.</p>
-            <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
+            <div className="space-y-2 mb-4 max-h-80 overflow-y-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
               {disputeEligible.map((order) => {
                 const listing = getListingById(order.listingId);
                 const role = address?.toLowerCase() === order.buyer.toLowerCase() ? 'Buyer' : 'Seller';
@@ -5054,7 +5066,7 @@ export default function Ecommerce() {
 
       {resolveCenterOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
             <h3 className="font-semibold text-lg mb-1">Dispute Queue</h3>
             <p className={`text-xs ${subtleText} mb-4`}>
               {disputeQueueTab === 'open'
@@ -5156,7 +5168,7 @@ export default function Ecommerce() {
 
       {adminSettingsOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] p-4" onClick={() => setAdminSettingsOpen(false)}>
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-md border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-lg">Admin Settings</h3>
               <button onClick={() => setAdminSettingsOpen(false)} className={`w-8 h-8 rounded-full ${darkMode ? 'hover:bg-white/10' : 'hover:bg-zinc-100'} flex items-center justify-center`}>✕</button>
@@ -5222,7 +5234,7 @@ export default function Ecommerce() {
 
       {walletChoiceOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder} max-h-[90vh] overflow-y-auto`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-sm border ${cardBorder} max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
             <h3 className="font-semibold text-lg mb-1">Connect Your Wallet</h3>
             <p className={`text-xs ${subtleText} mb-4`}>New here? Pick any option below — a wallet is created for you automatically.</p>
             {oauthErr && (<div className="mb-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30"><p className="text-xs text-red-500 font-medium">{oauthErr}</p></div>)}
@@ -5263,7 +5275,7 @@ export default function Ecommerce() {
 
       {helpModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[75] p-4">
-          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto`}>
+          <div className={`${cardBg} rounded-3xl p-6 w-full max-w-lg border ${cardBorder} max-h-[85vh] overflow-y-auto [&::-webkit-scrollbar]:hidden`} style={{ scrollbarWidth: 'none' }}>
             <h3 className="font-semibold text-xl mb-1">Welcome to {BRAND_NAME} 👋</h3>
             <p className={`text-sm ${subtleText} mb-5`}>This is a testnet — everything here uses fake, free test money. Nothing costs real funds. Here's how to get started:</p>
             <div className="space-y-4 mb-6">
