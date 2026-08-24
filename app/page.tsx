@@ -516,6 +516,7 @@ export default function Ecommerce() {
   const [settingsAddressCopied, setSettingsAddressCopied] = useState(false);
   const [walletSetupTimedOut, setWalletSetupTimedOut] = useState(false);
   const [shippingInfoMap, setShippingInfoMap] = useState<Record<number, ShippingInfo>>({});
+  const [orderTxHashMap, setOrderTxHashMap] = useState<Record<number, string>>({});
   const [chatModalOrderId, setChatModalOrderId] = useState<number | null>(null);
   const [chatMessagesMap, setChatMessagesMap] = useState<Record<number, ChatMessage[]>>({});
   const [chatInput, setChatInput] = useState('');
@@ -1098,6 +1099,14 @@ export default function Ecommerce() {
       const sellerMap: Record<number, string> = {};
       newOrderIds.forEach((id, i) => { if (sellerAddresses[i]) sellerMap[id] = sellerAddresses[i]; });
       await saveShippingInfoForOrders(newOrderIds, info, sellerMap);
+      // Record the real purchase transaction's hash against every order it
+      // created, so each one can later show a precise "view this exact
+      // transaction" link instead of only the contract's general activity.
+      if (txHash && newOrderIds.length > 0) {
+        supabase.functions.invoke('order-tx', {
+          body: { action: 'save', contractAddress: MARKETPLACE_ADDRESS, orderIds: newOrderIds, txHash },
+        }).catch((e) => console.error('Failed to save transaction hash:', e));
+      }
       // Notify each seller involved - a multi-item cart can span several
       // sellers at once, so each one gets their own notification for their
       // own item(s), not a single combined alert.
@@ -1638,6 +1647,29 @@ export default function Ecommerce() {
     loadChatActivity(myOrderIds);
     const interval = setInterval(() => loadChatActivity(myOrderIds), 8000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, allOrders.length]);
+
+  // Fetches each of the current wallet's orders' real transaction hashes -
+  // unlike chat activity, these never change once set, so this loads once
+  // per new order rather than polling.
+  useEffect(() => {
+    if (!address) return;
+    const myOrderIds = allOrders
+      .filter((o) => {
+        const listing = getListingById(o.listingId);
+        return o.buyer.toLowerCase() === address.toLowerCase() || (listing && listing.seller.toLowerCase() === address.toLowerCase());
+      })
+      .map((o) => o.id)
+      .filter((id) => orderTxHashMap[id] === undefined);
+    if (myOrderIds.length === 0) return;
+
+    supabase.functions.invoke('order-tx', {
+      body: { action: 'get', contractAddress: MARKETPLACE_ADDRESS, orderIds: myOrderIds },
+    }).then(({ data, error }) => {
+      if (error) { console.error('Failed to load transaction hashes:', error); return; }
+      setOrderTxHashMap((prev) => ({ ...prev, ...(data?.data || {}) }));
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, allOrders.length]);
 
@@ -2808,17 +2840,18 @@ export default function Ecommerce() {
 
           {statusOrActions()}
 
-          {/* Not tied to this specific order's exact transaction (that isn't
-              saved anywhere yet) - links to the contract's full public
-              activity on the block explorer, so either party can
-              independently verify payments themselves at any time. */}
+          {/* Precise link straight to this order's real purchase transaction
+              once its hash has been recorded (every purchase going forward
+              saves this automatically); falls back to the contract's
+              general activity page for older orders from before this was
+              added. */}
           <a
-            href={`https://testnet.bscscan.com/address/${MARKETPLACE_ADDRESS}`}
+            href={orderTxHashMap[order.id] ? `https://testnet.bscscan.com/tx/${orderTxHashMap[order.id]}` : `https://testnet.bscscan.com/address/${MARKETPLACE_ADDRESS}`}
             target="_blank"
             rel="noopener noreferrer"
-            className={`mt-2 block text-center text-[11px] ${subtleText} hover:underline`}
+            className="mt-2 block text-center text-[11px] text-sky-500 hover:text-sky-600 hover:underline"
           >
-            View contract activity on BscScan ↗
+            {orderTxHashMap[order.id] ? 'View this transaction on BscScan ↗' : 'View contract activity on BscScan ↗'}
           </a>
         </div>
       </div>
