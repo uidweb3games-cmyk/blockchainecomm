@@ -2763,6 +2763,20 @@ export default function Ecommerce() {
                   Mark as {SHIPPING_LABELS[order.shippingStatus + 1]} →
                 </button>
               )}
+              {/* If a buyer never confirms and the release window has genuinely
+                  passed, the seller can claim their payout themselves - this
+                  is the actual trigger for autoRelease, which otherwise sits
+                  unused: the contract makes it callable, but nothing fires it
+                  automatically on its own. */}
+              {context === 'seller' && isSeller && !order.released && !order.cancelled && !order.disputed && releaseWindow !== undefined && (Date.now() / 1000) >= Number(order.purchaseTime) + Number(releaseWindow) && (
+                <button
+                  onClick={() => call('autoRelease', [BigInt(order.id)])}
+                  disabled={isPending}
+                  className="mt-2 text-xs text-lime-600 hover:text-lime-700 font-semibold disabled:opacity-50"
+                >
+                  {isPending ? 'Confirm in wallet...' : '💰 Claim Payment (buyer didn\'t confirm in time) →'}
+                </button>
+              )}
             </div>
           )}
 
@@ -2788,6 +2802,19 @@ export default function Ecommerce() {
           )}
 
           {statusOrActions()}
+
+          {/* Not tied to this specific order's exact transaction (that isn't
+              saved anywhere yet) - links to the contract's full public
+              activity on the block explorer, so either party can
+              independently verify payments themselves at any time. */}
+          <a
+            href={`https://testnet.bscscan.com/address/${MARKETPLACE_ADDRESS}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`mt-2 block text-center text-[11px] ${subtleText} hover:underline`}
+          >
+            View contract activity on BscScan ↗
+          </a>
         </div>
       </div>
     );
