@@ -451,6 +451,7 @@ export default function Ecommerce() {
   const [featuredPickerInitialized, setFeaturedPickerInitialized] = useState(false);
   const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
   const [newListingFee, setNewListingFee] = useState('');
+  const [newReleaseWindowDays, setNewReleaseWindowDays] = useState('');
   const [newAdFee, setNewAdFee] = useState('');
   const [newAdDurationDays, setNewAdDurationDays] = useState('');
   const [newPointsPerListing, setNewPointsPerListing] = useState('');
@@ -2375,6 +2376,7 @@ export default function Ecommerce() {
   // ---------- ADMIN ----------
   const openAdminSettings = () => {
     setNewListingFee(formatEther(listingFeeWei));
+    setNewReleaseWindowDays(releaseWindow !== undefined ? (Number(releaseWindow) / 86400).toString() : '');
     setNewAdFee(formatEther(adSubscriptionFeeWei));
     setNewAdDurationDays(adSubscriptionDurationSeconds ? String(Math.round(adSubscriptionDurationSeconds / 86400)) : '');
     setNewPointsPerListing(pointsPerListingData !== undefined ? String(pointsPerListingData) : '');
@@ -2389,6 +2391,9 @@ export default function Ecommerce() {
   const saveAdminSettings = () => {
     if (newListingFee && Number(newListingFee) >= 0) {
       call('setListingFee', [parseEther(newListingFee)]);
+    }
+    if (newReleaseWindowDays && Number(newReleaseWindowDays) > 0) {
+      call('setReleaseWindow', [BigInt(Math.round(Number(newReleaseWindowDays) * 86400))]);
     }
     if (newAdFee && Number(newAdFee) >= 0) {
       call('setAdSubscriptionFee', [parseEther(newAdFee)]);
@@ -5126,6 +5131,11 @@ export default function Ecommerce() {
 
             <div className="space-y-3 mb-4">
               <div><label className={`text-xs ${subtleText} block mb-1`}>Listing Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newListingFee} onChange={(e) => setNewListingFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
+              <div>
+                <label className={`text-xs ${subtleText} block mb-1`}>Release Window (days)</label>
+                <input type="number" step="1" min="1" value={newReleaseWindowDays} onChange={(e) => setNewReleaseWindowDays(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} />
+                <p className={`text-[11px] ${subtleText} mt-1`}>How long a buyer has to confirm receipt (or raise a dispute) before a seller can claim automatic payout.</p>
+              </div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Fee (tBNB)</label><input type="number" step="0.0001" min="0" value={newAdFee} onChange={(e) => setNewAdFee(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Ad Subscription Duration (days)</label><input type="number" step="1" min="1" value={newAdDurationDays} onChange={(e) => setNewAdDurationDays(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
               <div><label className={`text-xs ${subtleText} block mb-1`}>Points per Listing</label><input type="number" step="1" min="0" value={newPointsPerListing} onChange={(e) => setNewPointsPerListing(e.target.value)} className={`w-full ${inputBg} border ${cardBorder} rounded-xl px-4 py-2.5 outline-none focus:border-lime-400 transition-colors`} /></div>
