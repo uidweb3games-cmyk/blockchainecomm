@@ -10,6 +10,7 @@ import { formatEther, parseEther } from 'viem';
 import { BarChart, Bar, ResponsiveContainer, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { MARKETPLACE_ADDRESS, MARKETPLACE_ABI, USDC_ADDRESS, USDT_ADDRESS, ERC20_ABI } from './contract';
 import { supabase } from './supabaseClient';
+import SortMenu from './SortMenu';
 import nacl from 'tweetnacl';
 
 const SHIPPING_LABELS = ['Processing', 'Shipped', 'Delivered'];
@@ -477,7 +478,6 @@ export default function Ecommerce() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'price_low' | 'price_high'>('newest');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartCurrency, setCartCurrency] = useState<string | null>(null);
   const [shippingModal, setShippingModal] = useState(false);
@@ -555,12 +555,13 @@ export default function Ecommerce() {
   // Closes every other small dropdown menu on the page - called right
   // before opening any ONE of them, so two can never be visually stacked
   // on top of each other at once (e.g. the hamburger menu and the sell
-  // page's sub-menu both being open together).
+  // page's sub-menu both being open together). Sort menu isn't included
+  // here anymore - it's now a fully self-contained component with its own
+  // internal state, no longer coordinated from this parent at all.
   const closeAllDropdowns = () => {
     setMenuOpen(false);
     setCurrencyMenuOpen(false);
     setNotifBellOpen(false);
-    setSortMenuOpen(false);
     setSellPageMenuOpen(false);
   };
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -3013,34 +3014,15 @@ export default function Ecommerce() {
               <div className="w-8 h-8 mr-1 rounded-full bg-gradient-to-r from-lime-400 to-sky-400 flex items-center justify-center text-zinc-900 shrink-0">🔍</div>
             </div>
             <div className="max-w-6xl mx-auto flex items-center gap-2 flex-wrap">
-              <div className="relative" onMouseLeave={() => setSortMenuOpen(false)}>
-                <button onClick={() => { const next = !sortMenuOpen; closeAllDropdowns(); setSortMenuOpen(next); }} className={`px-3 py-1.5 rounded-full border ${cardBorder} text-xs font-medium ${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'} flex items-center gap-1`}>
-                  Sort: {sortOrder === 'newest' ? 'Newest' : sortOrder === 'price_low' ? 'Price: Low to High' : 'Price: High to Low'}
-                  <span className="text-[10px]">▾</span>
-                </button>
-                {sortMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setSortMenuOpen(false)} />
-                    <div className={`absolute left-0 mt-2 w-48 ${cardBg} border ${cardBorder} rounded-2xl shadow-lg overflow-hidden z-50`}>
-                      <button onClick={() => { setSortOrder('newest'); setSortMenuOpen(false); }} className={`w-full text-left px-4 py-2.5 text-sm font-medium ${sortOrder === 'newest' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}>Newest</button>
-                      <button
-                        onClick={() => { if (filterAddress !== null) { setSortOrder('price_low'); setSortMenuOpen(false); } }}
-                        disabled={filterAddress === null}
-                        className={`w-full text-left px-4 py-2.5 text-sm font-medium ${filterAddress === null ? `${subtleText} cursor-not-allowed opacity-60` : sortOrder === 'price_low' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
-                      >
-                        Price: Low to High {filterAddress === null && <span className="block text-[10px] font-normal">Pick a currency first</span>}
-                      </button>
-                      <button
-                        onClick={() => { if (filterAddress !== null) { setSortOrder('price_high'); setSortMenuOpen(false); } }}
-                        disabled={filterAddress === null}
-                        className={`w-full text-left px-4 py-2.5 text-sm font-medium ${filterAddress === null ? `${subtleText} cursor-not-allowed opacity-60` : sortOrder === 'price_high' ? 'bg-gradient-to-r from-lime-400 to-sky-400 text-zinc-900' : `${darkMode ? 'hover:bg-white/5' : 'hover:bg-zinc-50'}`}`}
-                      >
-                        Price: High to Low {filterAddress === null && <span className="block text-[10px] font-normal">Pick a currency first</span>}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <SortMenu
+                sortOrder={sortOrder}
+                setSortOrder={setSortOrder}
+                filterAddress={filterAddress}
+                darkMode={darkMode}
+                cardBg={cardBg}
+                cardBorder={cardBorder}
+                subtleText={subtleText}
+              />
               {filterAddress === null ? (
                 <span className={`text-xs ${subtleText} italic`}>Pick a currency above to filter by price range</span>
               ) : (
